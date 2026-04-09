@@ -1,0 +1,174 @@
+// ── Domain types ──────────────────────────────────────────────────────────────
+
+export type DbType = 'sqlite' | 'mysql' | 'postgresql' | 'mongodb'
+
+export interface SshConfig {
+  host: string
+  port: number
+  username: string
+  password?: string
+  privateKey?: string
+}
+
+export interface ConnectionConfig {
+  dbType: DbType
+  name?: string
+  // Remote DB fields
+  host?: string
+  port?: number
+  username?: string
+  password?: string
+  database?: string
+  // SSH tunnel
+  ssh?: SshConfig
+}
+
+export interface SavedConnection {
+  id: string
+  label: string
+  config: ConnectionConfig
+  lastUsed: number   // unix ms
+}
+
+export interface TableItem {
+  name: string
+  type: 'table' | 'view'
+}
+
+export interface DatabaseNode {
+  name: string
+  tables: TableItem[] | null   // null = not yet loaded
+}
+
+export interface Connection {
+  id: string
+  name: string
+  filePath: string
+  dbType?: DbType
+  /** SQLite: flat table list. Remote: null (use databases instead) */
+  tables: TableItem[]
+  /** MySQL / PG / Mongo: database/schema list with lazy-loaded tables */
+  databases?: DatabaseNode[]
+}
+
+export type SubTab = 'data' | 'structure'
+export type TabType = 'table' | 'query'
+
+export interface Tab {
+  id: string
+  type: TabType
+  connectionId: string
+  connectionName: string
+  tableName?: string
+  database?: string   // which database/schema the table belongs to (remote only)
+  label: string
+}
+
+export interface StatusInfo {
+  message: string
+  rows?: number
+  time?: number
+  error?: boolean
+}
+
+/** A row returned from SQLite — values can be string, number, or null */
+export type DbRow = Record<string, string | number | null>
+
+// ── SQLite PRAGMA types ───────────────────────────────────────────────────────
+
+export interface ColumnInfo {
+  cid: number
+  name: string
+  type: string
+  notnull: 0 | 1
+  dflt_value: string | null
+  pk: 0 | 1
+}
+
+export interface ForeignKey {
+  id: number
+  seq: number
+  table: string
+  from: string
+  to: string
+  on_update: string
+  on_delete: string
+  match: string
+}
+
+export interface IndexInfo {
+  seq: number
+  name: string
+  unique: 0 | 1
+  origin: string
+  partial: 0 | 1
+}
+
+export interface TableStructure {
+  columns: ColumnInfo[]
+  foreignKeys: ForeignKey[]
+  indices: IndexInfo[]
+  sql: string
+}
+
+// ── IPC result types ──────────────────────────────────────────────────────────
+
+export interface IpcConnectionResult {
+  id: string
+  name: string
+  filePath: string
+  dbType?: DbType
+  database?: string
+  error?: string
+}
+
+export interface TableDataResult {
+  rows: DbRow[]
+  total: number
+  page: number
+  limit: number
+  error?: string
+}
+
+export interface QueryResult {
+  rows?: DbRow[]
+  changes?: number
+  lastInsertRowid?: number
+  elapsed?: number
+  type?: 'select' | 'exec'
+  error?: string
+}
+
+export interface RowMutationResult {
+  success?: boolean
+  lastInsertRowid?: number
+  error?: string
+}
+
+// ── Electron API (window.electronAPI) ────────────────────────────────────────
+
+export interface ElectronAPI {
+  openDatabase:       ()                                          => Promise<IpcConnectionResult | null>
+  createDatabase:     ()                                          => Promise<IpcConnectionResult | null>
+  closeDatabase:      (id: string)                               => Promise<boolean>
+  getDemo:            ()                                          => Promise<IpcConnectionResult>
+  connectRemote:      (config: ConnectionConfig)                  => Promise<IpcConnectionResult>
+  testConnection:     (config: ConnectionConfig)                  => Promise<{ ok: boolean; error?: string; latency?: number }>
+  listTables:         (id: string)                               => Promise<TableItem[] | { error: string }>
+  listDatabases:      (id: string)                               => Promise<DatabaseNode[] | { error: string }>
+  listTablesForDb:    (id: string, dbName: string)               => Promise<TableItem[] | { error: string }>
+  getTableStructure:  (id: string, table: string, db?: string)   => Promise<TableStructure | { error: string }>
+  getTableData:       (id: string, table: string, page: number, limit: number, db?: string) => Promise<TableDataResult>
+  insertRow:          (id: string, table: string, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
+  updateRow:          (id: string, table: string, rowid: number, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
+  deleteRow:          (id: string, table: string, rowid: number, db?: string) => Promise<RowMutationResult>
+  runQuery:           (id: string, sql: string)                  => Promise<QueryResult>
+}
+
+// ── Global augmentation ───────────────────────────────────────────────────────
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI
+  }
+}
