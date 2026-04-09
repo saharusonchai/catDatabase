@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TableStructure, ColumnInfo } from '../types'
 
 const api = window.electronAPI
@@ -68,6 +68,8 @@ export default function StructureView({ connectionId, tableName, database }: Pro
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState<string | null>(null)
   const [showSql, setShowSql]     = useState(false)
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const resizeRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -79,6 +81,37 @@ export default function StructureView({ connectionId, tableName, database }: Pro
   }, [connectionId, tableName, database])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const onMouseMove = (event: MouseEvent) => {
+      const resize = resizeRef.current
+      if (!resize) return
+      const nextWidth = Math.max(90, resize.startWidth + (event.clientX - resize.startX))
+      setColumnWidths(prev => ({ ...prev, [resize.column]: nextWidth }))
+    }
+
+    const onMouseUp = () => {
+      resizeRef.current = null
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
+
+  const handleResizeStart = useCallback((column: string, event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const currentWidth = columnWidths[column] ?? 140
+    resizeRef.current = { column, startX: event.clientX, startWidth: currentWidth }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [columnWidths])
 
   if (loading) return <div style={{ padding: 32, color: 'var(--text-muted)', fontSize: 12.5 }}>Loading structure…</div>
   if (error)   return <div style={{ padding: 24, color: 'var(--red)', fontFamily: 'JetBrains Mono', fontSize: 12 }}>Error: {error}</div>
@@ -106,7 +139,15 @@ export default function StructureView({ connectionId, tableName, database }: Pro
             <thead>
               <tr style={{ background: 'var(--bg-table-hd)' }}>
                 {['#', 'Name', 'Type', 'PK', 'Nullable', 'Default', 'References'].map(h => (
-                  <th key={h} style={thStyle}>{h}</th>
+                  <th key={h} style={{ ...thStyle, width: columnWidths[h] ?? 140, minWidth: columnWidths[h] ?? 140, maxWidth: columnWidths[h] ?? 140 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                      <span>{h}</span>
+                      <span
+                        onMouseDown={event => handleResizeStart(h, event)}
+                        style={{ position: 'absolute', right: -8, top: -7, width: 16, height: 28, cursor: 'col-resize' }}
+                      />
+                    </div>
+                  </th>
                 ))}
               </tr>
             </thead>

@@ -5,6 +5,40 @@ const api = window.electronAPI
 
 // ── Result table ──────────────────────────────────────────────────────────────
 const ResultTable = memo(function ResultTable({ rows }: { rows: DbRow[] }) {
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const resizeRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null)
+
+  useEffect(() => {
+    const onMouseMove = (event: MouseEvent) => {
+      const resize = resizeRef.current
+      if (!resize) return
+      const nextWidth = Math.max(120, resize.startWidth + (event.clientX - resize.startX))
+      setColumnWidths(prev => ({ ...prev, [resize.column]: nextWidth }))
+    }
+
+    const onMouseUp = () => {
+      resizeRef.current = null
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
+
+  const handleResizeStart = useCallback((col: string, event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const currentWidth = columnWidths[col] ?? 180
+    resizeRef.current = { column: col, startX: event.clientX, startWidth: currentWidth }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [columnWidths])
+
   if (rows.length === 0) return (
     <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 12.5, fontFamily: 'JetBrains Mono' }}>
       Query returned 0 rows.
@@ -17,7 +51,17 @@ const ResultTable = memo(function ResultTable({ rows }: { rows: DbRow[] }) {
         <thead>
           <tr>
             <th style={{ width: 36, textAlign: 'center', color: 'var(--text-muted)' }}>#</th>
-            {cols.map(c => <th key={c}>{c}</th>)}
+            {cols.map(c => (
+              <th key={c} style={{ width: columnWidths[c] ?? 180, minWidth: columnWidths[c] ?? 180, maxWidth: columnWidths[c] ?? 180 }}>
+                <div style={{ display: 'flex', alignItems: 'center', position: 'relative', height: '100%' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{c}</span>
+                  <span
+                    onMouseDown={event => handleResizeStart(c, event)}
+                    style={{ position: 'absolute', right: -8, top: 0, width: 16, height: '100%', cursor: 'col-resize' }}
+                  />
+                </div>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -27,7 +71,7 @@ const ResultTable = memo(function ResultTable({ rows }: { rows: DbRow[] }) {
               {cols.map(c => {
                 const v = row[c]
                 if (v === null || v === undefined) return <td key={c} className="null-cell">NULL</td>
-                return <td key={c} className={typeof v === 'number' ? 'num-cell' : ''} title={String(v)}>{String(v)}</td>
+                return <td key={c} style={{ width: columnWidths[c] ?? 180, minWidth: columnWidths[c] ?? 180, maxWidth: columnWidths[c] ?? 180 }} className={typeof v === 'number' ? 'num-cell' : ''} title={String(v)}>{String(v)}</td>
               })}
             </tr>
           ))}

@@ -10,18 +10,26 @@ function loadSaved(): SavedConnection[] {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] }
 }
 
-function persistSaved(list: SavedConnection[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+function loadLegacySavedConnections(): SavedConnection[] {
+  return loadSaved()
+}
+
+function getSavedConnectionId(config: ConnectionConfig): string {
+  return `${config.dbType}:${config.host}:${config.port}:${config.database}:${config.username}`
 }
 
 function upsertSaved(list: SavedConnection[], config: ConnectionConfig, label: string): SavedConnection[] {
-  const fingerprint = `${config.dbType}:${config.host}:${config.port}:${config.database}:${config.username}`
+  const fingerprint = getSavedConnectionId(config)
   const existing = list.find(s => s.id === fingerprint)
   const entry: SavedConnection = { id: fingerprint, label, config, lastUsed: Date.now() }
   const next = existing
     ? list.map(s => s.id === fingerprint ? entry : s)
     : [entry, ...list]
   return next.slice(0, 20) // keep max 20
+}
+
+function getConnectionFingerprint(input: Pick<ConnectionConfig, 'dbType' | 'host' | 'port' | 'database' | 'username'>) {
+  return `${input.dbType}:${input.host}:${input.port}:${input.database}:${input.username}`
 }
 
 // ── Store shape ───────────────────────────────────────────────────────────────
@@ -33,23 +41,32 @@ interface AppState {
   subTabs: Record<string, SubTab>
   status: StatusInfo
   showConnectModal: boolean
+  editingConnectionId: string | null
+  editingConnectionConfig: ConnectionConfig | null
   savedConnections: SavedConnection[]
+  hasLoadedSavedConnections: boolean
+  hasRestoredSavedConnections: boolean
 }
 
 interface AppActions {
   /** Internal: resolve IPC result → typed Connection and add to store */
   _addConnection:  (conn: IpcConnectionResult | null) => Promise<Connection | null>
+  loadSavedConnections: () => Promise<void>
   loadDatabaseTables: (connectionId: string, databaseName: string) => Promise<TableItem[]>
+  refreshConnectionTables: (connectionId: string, databaseName?: string) => Promise<void>
   openDatabase:    () => Promise<Connection | null>
   createDatabase:  () => Promise<Connection | null>
   openDemo:        () => Promise<Connection | null>
   connectRemote:   (config: ConnectionConfig) => Promise<Connection | null>
+  restoreSavedConnections: () => Promise<void>
+  openEditConnectionModal: (connectionId: string) => void
   closeConnection: (id: string) => Promise<void>
   openConnectModal:    () => void
   closeConnectModal:   () => void
   deleteSavedConnection: (id: string) => void
   openTab:         (tabDef: Tab) => void
   closeTab:        (tabId: string) => void
+  closeAllTabs:    () => void
   setActiveTab:    (id: string) => void
   setSubTab:       (tabId: string, sub: SubTab) => void
   selectTable:     (connection: Connection, tableName: string, database?: string) => void
@@ -69,9 +86,42 @@ const useAppStore = create<AppStore>((set, get) => ({
   subTabs: {},
   status: { message: 'Ready' },
   showConnectModal: false,
-  savedConnections: loadSaved(),
+  editingConnectionId: null,
+  editingConnectionConfig: null,
+  savedConnections: [],
+  hasLoadedSavedConnections: false,
+  hasRestoredSavedConnections: false,
 
   // ── Connection actions ────────────────────────────────────────────────────
+  loadSavedConnections: async () => {
+    if (get().hasLoadedSavedConnections) return
+
+    const result = await api.getSavedConnections()
+    let saved = Array.isArray(result) ? result : []
+
+    if (!Array.isArray(result) && result.error) {
+      set({ status: { message: result.error, error: true } })
+    }
+
+    if (saved.length === 0) {
+      const legacy = loadLegacySavedConnections()
+      if (legacy.length > 0) {
+        const persistResult = await api.setSavedConnections(legacy)
+        if (persistResult.error) {
+          set({ status: { message: persistResult.error, error: true } })
+        } else {
+          localStorage.removeItem(STORAGE_KEY)
+          saved = legacy
+        }
+      }
+    }
+
+    set({
+      savedConnections: saved,
+      hasLoadedSavedConnections: true,
+    })
+  },
+
   _addConnection: async (conn) => {
     if (!conn) return null
     if (conn.error) {
@@ -79,7 +129,10 @@ const useAppStore = create<AppStore>((set, get) => ({
       return null
     }
     // Return existing connection if already open
-    const existing = get().connections.find(c => c.id === conn.id)
+    const existing = get().connections.find(c => (
+      c.id === conn.id ||
+      (c.dbType === conn.dbType && c.filePath === conn.filePath && c.name === conn.name)
+    ))
     if (existing) {
       set({ status: { message: `Already connected to ${conn.name}` } })
       return existing
@@ -89,13 +142,15 @@ const useAppStore = create<AppStore>((set, get) => ({
     let databases: DatabaseNode[] | undefined
 
     if (isHierarchicalRemote) {
-      if (conn.database) {
+      const databasesResult = await api.listDatabases(conn.id)
+      databases = Array.isArray(databasesResult) ? databasesResult : []
+
+      if (conn.database && databases) {
         const tablesResult = await api.listTablesForDb(conn.id, conn.database)
         const initialTables = Array.isArray(tablesResult) ? tablesResult : []
-        databases = [{ name: conn.database, tables: initialTables }]
-      } else {
-        const databasesResult = await api.listDatabases(conn.id)
-        databases = Array.isArray(databasesResult) ? databasesResult : []
+        databases = databases.map(db => (
+          db.name === conn.database ? { ...db, tables: initialTables } : db
+        ))
       }
     } else {
       const tablesResult = await api.listTables(conn.id)
@@ -128,6 +183,24 @@ const useAppStore = create<AppStore>((set, get) => ({
     return tables
   },
 
+  refreshConnectionTables: async (connectionId, databaseName) => {
+    const connection = get().connections.find(item => item.id === connectionId)
+    if (!connection) return
+
+    if (databaseName) {
+      await get().loadDatabaseTables(connectionId, databaseName)
+      return
+    }
+
+    const result = await api.listTables(connectionId)
+    const tables = Array.isArray(result) ? result : []
+    set(state => ({
+      connections: state.connections.map(conn => (
+        conn.id === connectionId ? { ...conn, tables } : conn
+      )),
+    }))
+  },
+
   openDatabase: async () => {
     const conn = await api.openDatabase()
     return get()._addConnection(conn)
@@ -148,22 +221,78 @@ const useAppStore = create<AppStore>((set, get) => ({
     const result = await get()._addConnection(conn)
     if (result) {
       const next = upsertSaved(get().savedConnections, config, result.name)
-      persistSaved(next)
-      set({ showConnectModal: false, savedConnections: next })
+      const persistResult = await api.setSavedConnections(next)
+      if (persistResult.error) {
+        set({ status: { message: persistResult.error, error: true } })
+      } else {
+        set(state => ({
+          showConnectModal: false,
+          editingConnectionId: null,
+          editingConnectionConfig: null,
+          savedConnections: next,
+          hasLoadedSavedConnections: true,
+          connections: state.connections.map(connection => (
+            connection.id === result.id ? { ...connection, config } : connection
+          )),
+        }))
+      }
     }
     return result
   },
 
-  openConnectModal:  () => set({ showConnectModal: true }),
-  closeConnectModal: () => set({ showConnectModal: false }),
+  restoreSavedConnections: async () => {
+    if (get().hasRestoredSavedConnections) return
+    set({ hasRestoredSavedConnections: true })
+    await get().loadSavedConnections()
+
+    const saved = get().savedConnections
+    if (saved.length === 0) return
+
+    for (const item of saved) {
+      const cfg = item.config
+      const fingerprint = getConnectionFingerprint(cfg)
+      const duplicate = get().connections.some(connection => (
+        connection.config
+          ? getConnectionFingerprint(connection.config) === fingerprint
+          : connection.dbType === cfg.dbType && connection.filePath === `${cfg.dbType}://${cfg.host}:${cfg.port}/${cfg.database || ''}`
+      ))
+      if (duplicate) continue
+      await get().connectRemote(cfg)
+    }
+  },
+
+  openEditConnectionModal: (connectionId) => {
+    const connection = get().connections.find(item => item.id === connectionId)
+    if (!connection?.config) return
+    set({
+      showConnectModal: true,
+      editingConnectionId: connectionId,
+      editingConnectionConfig: connection.config,
+    })
+  },
+
+  openConnectModal:  () => set({ showConnectModal: true, editingConnectionId: null, editingConnectionConfig: null }),
+  closeConnectModal: () => set({ showConnectModal: false, editingConnectionId: null, editingConnectionConfig: null }),
 
   deleteSavedConnection: (id) => {
     const next = get().savedConnections.filter(s => s.id !== id)
-    persistSaved(next)
-    set({ savedConnections: next })
+    void api.setSavedConnections(next)
+    set({ savedConnections: next, hasLoadedSavedConnections: true })
   },
 
   closeConnection: async (id) => {
+    const connection = get().connections.find(item => item.id === id)
+    if (connection?.config) {
+      const savedId = getSavedConnectionId(connection.config)
+      const next = get().savedConnections.filter(item => item.id !== savedId)
+      const persistResult = await api.setSavedConnections(next)
+      if (persistResult.error) {
+        set({ status: { message: persistResult.error, error: true } })
+      } else {
+        set({ savedConnections: next, hasLoadedSavedConnections: true })
+      }
+    }
+
     await api.closeDatabase(id)
     set(state => {
       const remainingTabs = state.tabs.filter(t => t.connectionId !== id)
@@ -200,6 +329,10 @@ const useAppStore = create<AppStore>((set, get) => ({
       }
       return { tabs: next, activeTabId: newActiveId }
     })
+  },
+
+  closeAllTabs: () => {
+    set({ tabs: [], activeTabId: null, subTabs: {} })
   },
 
   setActiveTab: (id) => set({ activeTabId: id }),

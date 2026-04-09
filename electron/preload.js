@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Remote connection ─────────────────────────────────────────────────────
   connectRemote:   (config)                        => ipcRenderer.invoke('db:connect-remote', config),
   testConnection:  (config)                        => ipcRenderer.invoke('db:test-connection', config),
+  createTable:     (id, table, columnsSql, db, schema) => ipcRenderer.invoke('db:create-table', id, table, columnsSql, db, schema),
+  getSavedConnections: ()                          => ipcRenderer.invoke('app:get-saved-connections'),
+  setSavedConnections: (list)                      => ipcRenderer.invoke('app:set-saved-connections', list),
 
   // ── Shared ────────────────────────────────────────────────────────────────
   closeDatabase:      (id)                         => ipcRenderer.invoke('db:close', id),

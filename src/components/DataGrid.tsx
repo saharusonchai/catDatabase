@@ -1,7 +1,11 @@
-import { useState, useCallback, useMemo, useEffect, memo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef, memo } from 'react'
 import type { DbRow, StatusInfo } from '../types'
 
 const api = window.electronAPI
+
+function toEditableValue(value: DbRow[string]) {
+  return value == null ? '' : String(value)
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ModalState =
@@ -78,10 +82,22 @@ function DeleteConfirm({ count, onConfirm, onClose }: { count: number; onConfirm
 }
 
 // ── Cell ──────────────────────────────────────────────────────────────────────
-const Cell = memo(function Cell({ value, isPk }: { value: DbRow[string]; isPk: boolean }) {
-  if (value === null || value === undefined) return <td className="null-cell">NULL</td>
+const Cell = memo(function Cell({
+  value,
+  isPk,
+  style,
+  onClick,
+  onDoubleClick,
+}: {
+  value: DbRow[string]
+  isPk: boolean
+  style?: React.CSSProperties
+  onClick?: (event: React.MouseEvent<HTMLTableCellElement>) => void
+  onDoubleClick?: (event: React.MouseEvent<HTMLTableCellElement>) => void
+}) {
+  if (value === null || value === undefined) return <td style={style} className="null-cell" onClick={onClick} onDoubleClick={onDoubleClick}>NULL</td>
   const isNum = typeof value === 'number'
-  return <td className={isPk ? 'pk-cell' : isNum ? 'num-cell' : ''} title={String(value)}>{String(value)}</td>
+  return <td style={style} className={isPk ? 'pk-cell' : isNum ? 'num-cell' : ''} title={String(value)} onClick={onClick} onDoubleClick={onDoubleClick}>{String(value)}</td>
 })
 
 // ── DataGrid ──────────────────────────────────────────────────────────────────
@@ -105,11 +121,18 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
   const [sortDir, setSortDir]               = useState<'asc' | 'desc'>('asc')
   const [modal, setModal]                   = useState<ModalState>(null)
   const [filter, setFilter]                 = useState('')
+  const [columnWidths, setColumnWidths]     = useState<Record<string, number>>({})
+  const [editingRowId, setEditingRowId]     = useState<number | null>(null)
+  const [editingDraft, setEditingDraft]     = useState<Record<string, string>>({})
+  const [savingEdit, setSavingEdit]         = useState(false)
+  const resizeRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null)
 
   const loadData = useCallback(async (pg = 0) => {
     setLoading(true)
     setError(null)
     setSelectedRowids(new Set())
+    setEditingRowId(null)
+    setEditingDraft({})
     const result = await api.getTableData(connectionId, tableName, pg, limit, database)
     if (result.error) { setError(result.error); setLoading(false); return }
     setRows(result.rows)
@@ -129,6 +152,28 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     setPage(0); setSortCol(null); setFilter('')
     loadData(0)
   }, [connectionId, tableName, database])
+
+  useEffect(() => {
+    const onMouseMove = (event: MouseEvent) => {
+      const resize = resizeRef.current
+      if (!resize) return
+      const nextWidth = Math.max(120, resize.startWidth + (event.clientX - resize.startX))
+      setColumnWidths(prev => ({ ...prev, [resize.column]: nextWidth }))
+    }
+
+    const onMouseUp = () => {
+      resizeRef.current = null
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
 
   const displayRows = useMemo(() => {
     let r = rows
@@ -156,6 +201,15 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     })
   }, [])
 
+  const handleResizeStart = useCallback((col: string, event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const currentWidth = columnWidths[col] ?? 180
+    resizeRef.current = { column: col, startX: event.clientX, startWidth: currentWidth }
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [columnWidths])
+
   const handleRowClick = useCallback((rowid: number, e: React.MouseEvent) => {
     setSelectedRowids(prev => {
       const next = new Set(prev)
@@ -168,6 +222,28 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     })
   }, [])
 
+  const startInlineEdit = useCallback((row: DbRow) => {
+    const rowid = row.__rowid__ as number
+    setSelectedRowids(new Set([rowid]))
+    setEditingRowId(rowid)
+    setEditingDraft(
+      Object.fromEntries(columns.map(column => [column, toEditableValue(row[column])]))
+    )
+  }, [columns])
+
+  const cancelInlineEdit = useCallback(() => {
+    setEditingRowId(null)
+    setEditingDraft({})
+    setSavingEdit(false)
+  }, [])
+
+  useEffect(() => {
+    if (modal?.type === 'edit') {
+      startInlineEdit(modal.data)
+      setModal(null)
+    }
+  }, [modal, startInlineEdit])
+
   const handleInsert = useCallback(async (data: Record<string, string>) => {
     const result = await api.insertRow(connectionId, tableName, data, database)
     if (result.error) { alert('Insert failed:\n' + result.error); return }
@@ -175,15 +251,19 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     loadData(page)
   }, [connectionId, tableName, database, page, loadData])
 
-  const handleEdit = useCallback(async (data: Record<string, string>) => {
-    if (modal?.type !== 'edit') return
-    const rowid = modal.data.__rowid__ as number
-    const cleaned = Object.fromEntries(Object.entries(data).filter(([k]) => k !== '__rowid__'))
-    const result = await api.updateRow(connectionId, tableName, rowid, cleaned, database)
-    if (result.error) { alert('Update failed:\n' + result.error); return }
-    setModal(null)
+  const handleSaveInlineEdit = useCallback(async () => {
+    if (editingRowId == null) return
+    setSavingEdit(true)
+    const cleaned = Object.fromEntries(Object.entries(editingDraft).filter(([key]) => key !== '__rowid__'))
+    const result = await api.updateRow(connectionId, tableName, editingRowId, cleaned, database)
+    if (result.error) {
+      alert('Update failed:\n' + result.error)
+      setSavingEdit(false)
+      return
+    }
+    cancelInlineEdit()
     loadData(page)
-  }, [connectionId, tableName, database, page, loadData, modal])
+  }, [editingRowId, editingDraft, connectionId, tableName, database, cancelInlineEdit, loadData, page])
 
   const handleDelete = useCallback(async () => {
     for (const rowid of selectedRowids) {
@@ -250,22 +330,91 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
               <tr>
                 <th style={{ width: 36, textAlign: 'center', color: 'var(--text-muted)' }}>#</th>
                 {columns.map(col => (
-                  <th key={col} className={sortCol === col ? 'sorted' : ''} onClick={() => handleSort(col)}>
-                    {col}{sortCol === col && <span style={{ marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                  <th
+                    key={col}
+                    className={sortCol === col ? 'sorted' : ''}
+                    onClick={() => handleSort(col)}
+                    style={{ width: columnWidths[col] ?? 180, minWidth: columnWidths[col] ?? 180, maxWidth: columnWidths[col] ?? 180 }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', position: 'relative', height: '100%' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {col}{sortCol === col && <span style={{ marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                      </span>
+                      <span
+                        onMouseDown={event => handleResizeStart(col, event)}
+                        style={{ position: 'absolute', right: -8, top: 0, width: 16, height: '100%', cursor: 'col-resize' }}
+                      />
+                    </div>
                   </th>
                 ))}
+                <th style={{ width: 140, minWidth: 140, textAlign: 'center', color: 'var(--text-muted)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {displayRows.map((row, i) => {
                 const rowid = row.__rowid__ as number
+                const isEditing = editingRowId === rowid
                 return (
                   <tr key={rowid ?? i} className={selectedRowids.has(rowid) ? 'selected' : ''}
                     onClick={e => handleRowClick(rowid, e)}
-                    onDoubleClick={() => setModal({ type: 'edit', data: row })}
                     style={{ cursor: 'default' }}>
                     <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>{page * limit + i + 1}</td>
-                    {columns.map((col, ci) => <Cell key={col} value={row[col]} isPk={ci === 0} />)}
+                    {columns.map((col, ci) => (
+                      isEditing ? (
+                        <td
+                          key={col}
+                          style={{ width: columnWidths[col] ?? 180, minWidth: columnWidths[col] ?? 180, maxWidth: columnWidths[col] ?? 180, padding: 6 }}
+                        >
+                          <input
+                            value={editingDraft[col] ?? ''}
+                            onClick={event => event.stopPropagation()}
+                            onChange={event => setEditingDraft(prev => ({ ...prev, [col]: event.target.value }))}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault()
+                                void handleSaveInlineEdit()
+                              }
+                              if (event.key === 'Escape') {
+                                event.preventDefault()
+                                cancelInlineEdit()
+                              }
+                            }}
+                            className="w-full rounded-md border border-sky-400/30 bg-slate-950/70 px-2 py-1.5 text-[12px] text-slate-100 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-400/20"
+                          />
+                        </td>
+                      ) : (
+                        <Cell
+                          key={col}
+                          value={row[col]}
+                          isPk={ci === 0}
+                          onClick={event => {
+                            event.stopPropagation()
+                            startInlineEdit(row)
+                          }}
+                          onDoubleClick={event => {
+                            event.stopPropagation()
+                            startInlineEdit(row)
+                          }}
+                          style={{ width: columnWidths[col] ?? 180, minWidth: columnWidths[col] ?? 180, maxWidth: columnWidths[col] ?? 180 }}
+                        />
+                      )
+                    ))}
+                    <td style={{ width: 140, minWidth: 140, textAlign: 'center' }}>
+                      {isEditing ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <button className="btn btn-primary" disabled={savingEdit} onClick={event => { event.stopPropagation(); void handleSaveInlineEdit() }}>
+                            {savingEdit ? 'Saving...' : 'Save'}
+                          </button>
+                          <button className="btn btn-ghost" disabled={savingEdit} onClick={event => { event.stopPropagation(); cancelInlineEdit() }}>
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button className="btn btn-ghost" onClick={event => { event.stopPropagation(); startInlineEdit(row) }}>
+                          Edit
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
@@ -277,9 +426,6 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
       {/* Modals */}
       {modal?.type === 'insert' && (
         <RowModal mode="insert" columns={columns} onSave={handleInsert} onClose={() => setModal(null)} />
-      )}
-      {modal?.type === 'edit' && (
-        <RowModal mode="edit" columns={columns} initialData={modal.data} onSave={handleEdit} onClose={() => setModal(null)} />
       )}
       {modal?.type === 'delete' && (
         <DeleteConfirm count={selectedRowids.size} onConfirm={handleDelete} onClose={() => setModal(null)} />

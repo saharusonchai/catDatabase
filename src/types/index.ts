@@ -19,6 +19,7 @@ export interface ConnectionConfig {
   username?: string
   password?: string
   database?: string
+  keepAlive?: boolean
   // SSH tunnel
   ssh?: SshConfig
 }
@@ -33,6 +34,7 @@ export interface SavedConnection {
 export interface TableItem {
   name: string
   type: 'table' | 'view'
+  schema?: string
 }
 
 export interface DatabaseNode {
@@ -45,6 +47,7 @@ export interface Connection {
   name: string
   filePath: string
   dbType?: DbType
+  config?: ConnectionConfig
   /** SQLite: flat table list. Remote: null (use databases instead) */
   tables: TableItem[]
   /** MySQL / PG / Mongo: database/schema list with lazy-loaded tables */
@@ -145,6 +148,11 @@ export interface RowMutationResult {
   error?: string
 }
 
+export interface PersistResult {
+  success?: boolean
+  error?: string
+}
+
 // ── Electron API (window.electronAPI) ────────────────────────────────────────
 
 export interface ElectronAPI {
@@ -154,6 +162,9 @@ export interface ElectronAPI {
   getDemo:            ()                                          => Promise<IpcConnectionResult>
   connectRemote:      (config: ConnectionConfig)                  => Promise<IpcConnectionResult>
   testConnection:     (config: ConnectionConfig)                  => Promise<{ ok: boolean; error?: string; latency?: number }>
+  createTable:        (id: string, table: string, columnsSql: string, db?: string, schema?: string) => Promise<RowMutationResult>
+  getSavedConnections: ()                                         => Promise<SavedConnection[] | { error: string }>
+  setSavedConnections: (list: SavedConnection[])                  => Promise<PersistResult>
   listTables:         (id: string)                               => Promise<TableItem[] | { error: string }>
   listDatabases:      (id: string)                               => Promise<DatabaseNode[] | { error: string }>
   listTablesForDb:    (id: string, dbName: string)               => Promise<TableItem[] | { error: string }>
