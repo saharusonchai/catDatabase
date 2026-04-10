@@ -5,8 +5,11 @@ import Sidebar from './components/ExplorerSidebar'
 import DataGrid from './components/DataGrid'
 import QueryEditor from './components/QueryEditor'
 import StructureView from './components/StructureView'
+import CreateTableView from './components/CreateTableView'
 import StatusBar from './components/StatusBar'
 import ConnectModal from './components/ConnectSheet'
+import { AiOutlineApi  } from "react-icons/ai";
+import { CiViewTable } from "react-icons/ci";
 
 const IconMark = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -70,9 +73,17 @@ const IconQueryTab = () => (
   </svg>
 )
 
+const IconCreateTableTab = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1.3" y="1.3" width="9.4" height="9.4" rx="1.2" />
+    <path d="M1.3 4.5h9.4M6 1.8v8.4M3.3 7h5.4" />
+  </svg>
+)
+
 const TAB_ICONS: Record<string, JSX.Element> = {
   table: <IconTableTab />,
   query: <IconQueryTab />,
+  'create-table': <IconCreateTableTab />,
 }
 
 function HeaderBar() {
@@ -103,35 +114,31 @@ function HeaderBar() {
           </div>
         </div>
 
-        <div className="ml-4 flex min-w-0 flex-1 items-center">
+        <div className="ml-4 flex min-w-0 flex-1 items-center gap-3">
           <button
             type="button"
             onClick={openConnectModal}
             className="inline-flex min-h-[22px] min-w-[110px] flex-col items-center justify-center gap-1 rounded-lg border border-[#1d3851] bg-[#102235] px-3 py-1 text-sm font-semibold text-[#79bbff] transition hover:border-[#005FB8] hover:bg-[#121b25]"
           >
             <span className="inline-flex h-5 w-5 items-center justify-center">
-              <IconAdd />
+              <AiOutlineApi size={24} />
             </span>
             <span>Connection</span>
+          </button>
+          <button
+            type="button"
+            disabled={!activeConnection}
+            onClick={() => activeConnection && openQuery(activeConnection)}
+            className="inline-flex min-h-[22px] min-w-[110px] flex-col items-center justify-center gap-1 rounded-lg border border-[#1d3851] bg-[#102235] px-3 py-1 text-sm font-semibold text-[#79bbff] transition hover:border-[#005FB8] hover:bg-[#121b25] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="inline-flex h-5 w-5 items-center justify-center">
+              <CiViewTable  size={24} />
+            </span>
+            <span>New Query</span>
           </button>
         </div>
 
         <div className="flex items-center gap-2">
-          <label className="flex h-11 w-[240px] items-center gap-2 rounded-xl border border-[#1b2735] bg-[#111821] px-3 text-slate-500 focus-within:border-[#005FB8] focus-within:bg-[#0f1720]">
-            <IconSearch />
-            <input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Search..."
-              className="w-full border-0 bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-500"
-            />
-          </label>
-          <button type="button" onClick={openConnectModal} className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[#121821] hover:text-slate-200">
-            <IconRefresh />
-          </button>
-          <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[#121821] hover:text-slate-200">
-            <IconHistory />
-          </button>
           <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[#121821] hover:text-slate-200">
             <IconSettings />
           </button>
@@ -376,12 +383,26 @@ function MainContent() {
     )
   }
 
+  if (activeTab.type === 'create-table') {
+    return (
+      <CreateTableView
+        key={activeTab.id}
+        connectionId={activeTab.connectionId}
+        connectionName={activeTab.connectionName}
+        database={activeTab.database}
+        schemaName={activeTab.schemaName}
+        tableName={activeTab.tableName}
+        mode={activeTab.editorMode}
+      />
+    )
+  }
+
   const subTab: SubTab = subTabs[activeTab.id] ?? 'data'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0f141b]">
       <SubTabBar tabId={activeTab.id} />
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {subTab === 'data' ? (
           <DataGrid
             key={`${activeTab.connectionId}::${activeTab.database ?? ''}::${activeTab.tableName}`}
@@ -403,6 +424,32 @@ function MainContent() {
   )
 }
 
+function DataGridFooterBar() {
+  const gridFooter = useAppStore(s => s.gridFooter)
+
+  if (!gridFooter?.visible) return null
+
+  return (
+    <div className="flex h-9 items-center justify-end gap-2 border-t border-[#1b2735] bg-[#131a22] px-4 text-[11px] text-slate-400">
+      <span className="mr-1">{gridFooter.summary}</span>
+      <button className="btn btn-ghost" style={{ padding: '3px 8px' }} disabled={!gridFooter.canPrev} onClick={() => gridFooter.onPrev?.()}>
+        Prev
+      </button>
+      <span>{gridFooter.pageLabel}</span>
+      <button className="btn btn-ghost" style={{ padding: '3px 8px' }} disabled={!gridFooter.canNext} onClick={() => gridFooter.onNext?.()}>
+        Next
+      </button>
+      <select
+        value={gridFooter.limit}
+        onChange={event => gridFooter.onLimitChange?.(Number(event.target.value))}
+        style={{ background: '#0b1118', border: '1px solid #1b2735', color: '#8592a3', padding: '3px 4px', borderRadius: 4, fontSize: 11.5, outline: 'none' }}
+      >
+        {[50, 100, 250, 500, 1000].map(n => <option key={n} value={n}>{n} rows</option>)}
+      </select>
+    </div>
+  )
+}
+
 export default function AppShell() {
   const showConnectModal = useAppStore(s => s.showConnectModal)
 
@@ -413,11 +460,12 @@ export default function AppShell() {
         <Sidebar />
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <TabBar />
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
             <MainContent />
           </div>
         </main>
       </div>
+      <DataGridFooterBar />
       <StatusBar />
       {showConnectModal && <ConnectModal />}
     </div>

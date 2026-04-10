@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Connection, Tab, StatusInfo, SubTab, IpcConnectionResult, ConnectionConfig, SavedConnection, DatabaseNode, TableItem } from '../types'
+import type { Connection, Tab, StatusInfo, SubTab, IpcConnectionResult, ConnectionConfig, SavedConnection, DatabaseNode, TableItem, GridFooterState } from '../types'
 
 const api = window.electronAPI
 
@@ -46,6 +46,7 @@ interface AppState {
   savedConnections: SavedConnection[]
   hasLoadedSavedConnections: boolean
   hasRestoredSavedConnections: boolean
+  gridFooter: GridFooterState | null
 }
 
 interface AppActions {
@@ -70,8 +71,12 @@ interface AppActions {
   setActiveTab:    (id: string) => void
   setSubTab:       (tabId: string, sub: SubTab) => void
   selectTable:     (connection: Connection, tableName: string, database?: string) => void
+  openCreateTable: (connection: Connection, database?: string, schemaName?: string) => void
+  openEditTable:   (connection: Connection, tableName: string, database?: string, schemaName?: string) => void
+  deleteTable:     (connection: Connection, tableName: string, database?: string, schemaName?: string, itemType?: 'table' | 'view') => Promise<RowMutationResult>
   openQuery:       (connection: Connection) => void
   setStatus:       (status: StatusInfo) => void
+  setGridFooter:   (footer: GridFooterState | null) => void
 }
 
 type AppStore = AppState & AppActions
@@ -91,6 +96,7 @@ const useAppStore = create<AppStore>((set, get) => ({
   savedConnections: [],
   hasLoadedSavedConnections: false,
   hasRestoredSavedConnections: false,
+  gridFooter: null,
 
   // ── Connection actions ────────────────────────────────────────────────────
   loadSavedConnections: async () => {
@@ -358,6 +364,72 @@ const useAppStore = create<AppStore>((set, get) => ({
     }))
   },
 
+  openCreateTable: (connection, database, schemaName) => {
+    const scopeLabel = database ? `${database}.` : ''
+    const schemaLabel = schemaName ? ` (${schemaName})` : ''
+    const tabId = `create-table::${connection.id}::${database ?? ''}::${schemaName ?? ''}`
+    get().openTab({
+      id: tabId,
+      type: 'create-table',
+      connectionId: connection.id,
+      connectionName: connection.name,
+      database,
+      schemaName,
+      editorMode: 'create',
+      label: `New Table ${scopeLabel}${schemaLabel}`.trim(),
+    })
+  },
+
+  openEditTable: (connection, tableName, database, schemaName) => {
+    const scopedName = database ? `${database}.${tableName}` : tableName
+    const tabId = `edit-table::${connection.id}::${database ?? ''}::${schemaName ?? ''}::${tableName}`
+    get().openTab({
+      id: tabId,
+      type: 'create-table',
+      connectionId: connection.id,
+      connectionName: connection.name,
+      tableName,
+      database,
+      schemaName,
+      editorMode: 'edit',
+      label: `Edit ${scopedName}`,
+    })
+  },
+
+  deleteTable: async (connection, tableName, database, schemaName, itemType = 'table') => {
+    const qualifiedTable = schemaName && connection.dbType === 'postgresql'
+      ? `${schemaName}.${tableName}`
+      : tableName
+
+    const result = await api.deleteTable(connection.id, qualifiedTable, database, schemaName, itemType)
+    if (result.error) {
+      set({ status: { message: result.error, error: true } })
+      return result
+    }
+
+    await get().refreshConnectionTables(connection.id, database)
+
+    set(state => {
+      const remainingTabs = state.tabs.filter(tab => !(
+        tab.connectionId === connection.id &&
+        tab.tableName === tableName &&
+        tab.database === database &&
+        tab.schemaName === schemaName
+      ))
+      const activeStillExists = remainingTabs.some(tab => tab.id === state.activeTabId)
+      const label = itemType === 'view' ? 'view' : 'table'
+      return {
+        tabs: remainingTabs,
+        activeTabId: activeStillExists
+          ? state.activeTabId
+          : remainingTabs[remainingTabs.length - 1]?.id ?? null,
+        status: { message: `Deleted ${label} ${qualifiedTable}` },
+      }
+    })
+
+    return result
+  },
+
   openQuery: (connection) => {
     const tabId = `query::${connection.id}::${Date.now()}`
     get().openTab({
@@ -371,6 +443,7 @@ const useAppStore = create<AppStore>((set, get) => ({
 
   // ── Status ────────────────────────────────────────────────────────────────
   setStatus: (status) => set({ status }),
+  setGridFooter: (gridFooter) => set({ gridFooter }),
 }))
 
 export default useAppStore

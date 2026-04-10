@@ -55,7 +55,7 @@ export interface Connection {
 }
 
 export type SubTab = 'data' | 'structure'
-export type TabType = 'table' | 'query'
+export type TabType = 'table' | 'query' | 'create-table'
 
 export interface Tab {
   id: string
@@ -64,6 +64,8 @@ export interface Tab {
   connectionName: string
   tableName?: string
   database?: string   // which database/schema the table belongs to (remote only)
+  schemaName?: string
+  editorMode?: 'create' | 'edit'
   label: string
 }
 
@@ -72,6 +74,18 @@ export interface StatusInfo {
   rows?: number
   time?: number
   error?: boolean
+}
+
+export interface GridFooterState {
+  visible: boolean
+  summary: string
+  pageLabel: string
+  limit: number
+  canPrev: boolean
+  canNext: boolean
+  onPrev?: () => void
+  onNext?: () => void
+  onLimitChange?: (limit: number) => void
 }
 
 /** A row returned from SQLite — values can be string, number, or null */
@@ -86,6 +100,7 @@ export interface ColumnInfo {
   notnull: 0 | 1
   dflt_value: string | null
   pk: 0 | 1
+  comment?: string | null
 }
 
 export interface ForeignKey {
@@ -162,14 +177,16 @@ export interface ElectronAPI {
   getDemo:            ()                                          => Promise<IpcConnectionResult>
   connectRemote:      (config: ConnectionConfig)                  => Promise<IpcConnectionResult>
   testConnection:     (config: ConnectionConfig)                  => Promise<{ ok: boolean; error?: string; latency?: number }>
-  createTable:        (id: string, table: string, columnsSql: string, db?: string, schema?: string) => Promise<RowMutationResult>
+  createTable:        (id: string, table: string, columnsSql: string, db?: string, schema?: string, comments?: Record<string, string>) => Promise<RowMutationResult>
+  updateTableSchema:  (id: string, table: string, nextTable: string, columnsSql: string, db?: string, schema?: string, comments?: Record<string, string>) => Promise<RowMutationResult>
+  deleteTable:        (id: string, table: string, db?: string, schema?: string, itemType?: 'table' | 'view') => Promise<RowMutationResult>
   getSavedConnections: ()                                         => Promise<SavedConnection[] | { error: string }>
   setSavedConnections: (list: SavedConnection[])                  => Promise<PersistResult>
   listTables:         (id: string)                               => Promise<TableItem[] | { error: string }>
   listDatabases:      (id: string)                               => Promise<DatabaseNode[] | { error: string }>
   listTablesForDb:    (id: string, dbName: string)               => Promise<TableItem[] | { error: string }>
   getTableStructure:  (id: string, table: string, db?: string)   => Promise<TableStructure | { error: string }>
-  getTableData:       (id: string, table: string, page: number, limit: number, db?: string) => Promise<TableDataResult>
+  getTableData:       (id: string, table: string, page: number, limit: number, db?: string, filter?: string) => Promise<TableDataResult>
   insertRow:          (id: string, table: string, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
   updateRow:          (id: string, table: string, rowid: number, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
   deleteRow:          (id: string, table: string, rowid: number, db?: string) => Promise<RowMutationResult>

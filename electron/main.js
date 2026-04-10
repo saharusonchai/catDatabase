@@ -49,38 +49,106 @@ function assertSimpleIdentifier(value, label = 'Identifier') {
   return text
 }
 
+function quoteSqliteIdentifier(value) {
+  return `"${String(value).replace(/"/g, '""')}"`
+}
+
+function quotePgIdentifier(value) {
+  return `"${String(value).replace(/"/g, '""')}"`
+}
+
+function replacePgQualifiedName(definition, schema, currentTable, targetTable) {
+  const quotedCurrent = `${quotePgIdentifier(schema)}.${quotePgIdentifier(currentTable)}`
+  const quotedTarget = `${quotePgIdentifier(schema)}.${quotePgIdentifier(targetTable)}`
+  const unquotedCurrent = `${schema}.${currentTable}`
+  const unquotedTarget = `${schema}.${targetTable}`
+
+  return String(definition || '')
+    .split(quotedCurrent).join(quotedTarget)
+    .split(unquotedCurrent).join(unquotedTarget)
+}
+
+function normalizeTableFilterClause(filter) {
+  const raw = String(filter || '').trim()
+  if (!raw) return ''
+  const clause = raw.replace(/^\s*where\b/i, '').trim()
+  if (!clause) return ''
+  if (/[;]/.test(clause) || /--|\/\*/.test(clause)) {
+    throw new Error('Filter must be a single WHERE expression')
+  }
+  return clause
+}
+
 // connections: Map<id, { adapter, name, dbType, filePath?, sshCleanup? }>
 const connections = new Map()
 
 // ── SSH Tunnel ────────────────────────────────────────────────────────────────
-function createSSHTunnel(sshCfg, targetHost, targetPort) {
+function createSSHTunnel(sshCfg, targetHost, targetPort, options = {}) {
   return new Promise((resolve, reject) => {
     if (!ssh2Lib) return reject(new Error('ssh2 module not available'))
     const { Client } = ssh2Lib
     const client = new Client()
+    let server = null
+    let resolved = false
+    let isClosed = false
+
+    const closeTunnel = () => {
+      if (isClosed) return
+      isClosed = true
+      try { server?.close() } catch (_) {}
+      try { client.end() } catch (_) {}
+    }
+
+    const fail = (err) => {
+      closeTunnel()
+      if (!resolved) reject(err)
+    }
 
     client.on('ready', () => {
-      const server = net.createServer(sock => {
-        client.forwardOut('127.0.0.1', 0, targetHost, targetPort, (err, stream) => {
-          if (err) { sock.destroy(); return }
+      server = net.createServer(sock => {
+        if (isClosed) {
+          sock.destroy()
+          return
+        }
+
+        try {
+          client.forwardOut('127.0.0.1', 0, targetHost, targetPort, (err, stream) => {
+            if (err || isClosed) {
+              sock.destroy()
+              if (stream) {
+                try { stream.close() } catch (_) {}
+              }
+              return
+            }
+
           sock.pipe(stream).pipe(sock)
           sock.on('close', () => { try { stream.close() } catch (_) {} })
-        })
+          })
+        } catch (_) {
+          sock.destroy()
+        }
       })
+
+      server.on('error', fail)
       server.listen(0, '127.0.0.1', () => {
+        resolved = true
         resolve({
           port: server.address().port,
-          close: () => { try { server.close(); client.end() } catch (_) {} },
+          close: closeTunnel,
         })
       })
     })
-    client.on('error', reject)
+    client.on('error', fail)
+    client.on('close', closeTunnel)
+    client.on('end', closeTunnel)
 
     const sshConnCfg = {
       host: sshCfg.host,
       port: Number(sshCfg.port) || 22,
       username: sshCfg.username,
       readyTimeout: 15000,
+      keepaliveInterval: options.keepAlive ? KEEPALIVE_INTERVAL_MS : 0,
+      keepaliveCountMax: options.keepAlive ? 3 : undefined,
     }
     if (sshCfg.privateKey) {
       const fs = require('fs')
@@ -105,16 +173,18 @@ class SQLiteAdapter {
     `).all()
   }
 
-  getTableData(table, page, limit) {
+  getTableData(table, page, limit, _dbName, filter) {
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
-    const rows = this.db.prepare(`SELECT rowid as __rowid__, * FROM "${table}" LIMIT ? OFFSET ?`).all(lim, off)
-    const { cnt } = this.db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"`).get()
+    const clause = normalizeTableFilterClause(filter)
+    const where = clause ? ` WHERE ${clause}` : ''
+    const rows = this.db.prepare(`SELECT rowid as __rowid__, * FROM "${table}"${where} LIMIT ? OFFSET ?`).all(lim, off)
+    const { cnt } = this.db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"${where}`).get()
     return { rows, total: cnt, page: page || 0, limit: lim }
   }
 
   getTableStructure(table) {
-    const columns    = this.db.prepare(`PRAGMA table_info("${table}")`).all()
+    const columns    = this.db.prepare(`PRAGMA table_info("${table}")`).all().map(column => ({ ...column, comment: null }))
     const foreignKeys = this.db.prepare(`PRAGMA foreign_key_list("${table}")`).all()
     const indices    = this.db.prepare(`PRAGMA index_list("${table}")`).all()
     const { sql }    = this.db.prepare(`SELECT sql FROM sqlite_master WHERE name = ?`).get(table) || {}
@@ -173,6 +243,58 @@ class SQLiteAdapter {
     } catch (e) { return { error: e.message } }
   }
 
+  updateTableSchema(table, nextTable, columnsSql) {
+    try {
+      const currentTable = assertSimpleIdentifier(table, 'Table name')
+      const targetTable = assertSimpleIdentifier(nextTable, 'Table name')
+      const definition = String(columnsSql || '').trim()
+      if (!definition) return { error: 'Column definition is required' }
+
+      const existingColumns = this.db.prepare(`PRAGMA table_info(${quoteSqliteIdentifier(currentTable)})`).all()
+      if (!existingColumns.length) return { error: 'Table not found' }
+
+      const existingNames = new Set(existingColumns.map(column => column.name))
+      const tempTable = `__tmp_edit_${Date.now()}`
+      const quotedCurrent = quoteSqliteIdentifier(currentTable)
+      const quotedTarget = quoteSqliteIdentifier(targetTable)
+      const quotedTemp = quoteSqliteIdentifier(tempTable)
+      const quotedBackup = quoteSqliteIdentifier(`__old_${Date.now()}`)
+
+      this.db.exec('BEGIN')
+      try {
+        this.db.exec('PRAGMA foreign_keys = OFF')
+        this.db.exec(`CREATE TABLE ${quotedTemp} (${definition})`)
+        const nextColumns = this.db.prepare(`PRAGMA table_info(${quotedTemp})`).all().map(column => column.name)
+        if (!nextColumns.length) throw new Error('Unable to determine target columns')
+        const sharedColumns = nextColumns.filter(name => existingNames.has(name))
+        if (sharedColumns.length > 0) {
+          const projection = sharedColumns.map(quoteSqliteIdentifier).join(', ')
+          this.db.exec(`INSERT INTO ${quotedTemp} (${projection}) SELECT ${projection} FROM ${quotedCurrent}`)
+        }
+        this.db.exec(`ALTER TABLE ${quotedCurrent} RENAME TO ${quotedBackup}`)
+        this.db.exec(`ALTER TABLE ${quotedTemp} RENAME TO ${quotedTarget}`)
+        this.db.exec(`DROP TABLE ${quotedBackup}`)
+        this.db.exec('PRAGMA foreign_keys = ON')
+        this.db.exec('COMMIT')
+      } catch (error) {
+        this.db.exec('ROLLBACK')
+        this.db.exec('PRAGMA foreign_keys = ON')
+        throw error
+      }
+
+        return { success: true }
+      } catch (e) { return { error: e.message } }
+    }
+
+  deleteTable(table, _dbName, _schemaName, itemType = 'table') {
+    try {
+      const tableName = assertSimpleIdentifier(table, 'Table name')
+      const kind = itemType === 'view' ? 'VIEW' : 'TABLE'
+      this.db.exec(`DROP ${kind} ${quoteSqliteIdentifier(tableName)}`)
+      return { success: true }
+    } catch (e) { return { error: e.message } }
+  }
+
   close() { try { this.db.close() } catch (_) {} }
 }
 
@@ -227,13 +349,15 @@ class MySQLAdapter {
     return rows
   }
 
-  async getTableData(table, page, limit, dbName) {
+  async getTableData(table, page, limit, dbName, filter) {
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
     const pk  = await this._getPk(table, dbName)
     const ref = this._tbl(table, dbName)
-    const [rows] = await this.conn.execute(`SELECT * FROM ${ref} LIMIT ? OFFSET ?`, [lim, off])
-    const [[{ cnt }]] = await this.conn.execute(`SELECT COUNT(*) as cnt FROM ${ref}`)
+    const clause = normalizeTableFilterClause(filter)
+    const where = clause ? ` WHERE ${clause}` : ''
+    const [rows] = await this.conn.execute(`SELECT * FROM ${ref}${where} LIMIT ? OFFSET ?`, [lim, off])
+    const [[{ cnt }]] = await this.conn.execute(`SELECT COUNT(*) as cnt FROM ${ref}${where}`)
     const out = rows.map(r => ({ __rowid__: pk ? r[pk] : null, ...r }))
     return { rows: out, total: Number(cnt), page: page || 0, limit: lim }
   }
@@ -243,7 +367,7 @@ class MySQLAdapter {
     const [cols] = await this.conn.execute(`SHOW FULL COLUMNS FROM ${ref}`)
     const columns = cols.map((c, i) => ({
       cid: i, name: c.Field, type: c.Type,
-      notnull: c.Null === 'NO' ? 1 : 0, dflt_value: c.Default, pk: c.Key === 'PRI' ? 1 : 0,
+      notnull: c.Null === 'NO' ? 1 : 0, dflt_value: c.Default, pk: c.Key === 'PRI' ? 1 : 0, comment: c.Comment || null,
     }))
     let ddl = ''
     try {
@@ -309,6 +433,16 @@ class MySQLAdapter {
       if (!definition) return { error: 'Column definition is required' }
       const ref = this._tbl(tableName, dbName)
       await this.conn.execute(`CREATE TABLE ${ref} (${definition})`)
+      return { success: true }
+    } catch (e) { return { error: e.message } }
+  }
+
+  async deleteTable(table, dbName, _schemaName, itemType = 'table') {
+    try {
+      const tableName = assertSimpleIdentifier(table, 'Table name')
+      const ref = this._tbl(tableName, dbName)
+      const kind = itemType === 'view' ? 'VIEW' : 'TABLE'
+      await this.conn.execute(`DROP ${kind} ${ref}`)
       return { success: true }
     } catch (e) { return { error: e.message } }
   }
@@ -409,14 +543,16 @@ class PostgreSQLAdapter {
     return this.listTablesForDatabase(this.currentDatabase)
   }
 
-  async getTableData(table, page, limit, dbName) {
+  async getTableData(table, page, limit, dbName, filter) {
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
     const pk  = await this._getPk(table, dbName)
     const ref = this._tbl(table)
+    const clause = normalizeTableFilterClause(filter)
+    const where = clause ? ` WHERE ${clause}` : ''
     return this._withClient(dbName, async client => {
-      const { rows } = await client.query(`SELECT * FROM ${ref} LIMIT $1 OFFSET $2`, [lim, off])
-      const { rows: [{ cnt }] } = await client.query(`SELECT COUNT(*) as cnt FROM ${ref}`)
+      const { rows } = await client.query(`SELECT * FROM ${ref}${where} LIMIT $1 OFFSET $2`, [lim, off])
+      const { rows: [{ cnt }] } = await client.query(`SELECT COUNT(*) as cnt FROM ${ref}${where}`)
       const out = rows.map(r => ({ __rowid__: pk ? r[pk] : null, ...r }))
       return { rows: out, total: parseInt(cnt), page: page || 0, limit: lim }
     })
@@ -429,8 +565,13 @@ class PostgreSQLAdapter {
       const { rows: cols } = await client.query(`
         SELECT ordinal_position - 1 as cid, column_name as name, data_type as type,
                CASE WHEN is_nullable = 'NO' THEN 1 ELSE 0 END as notnull,
-               column_default as dflt_value
+               column_default as dflt_value,
+               pgd.description as comment
         FROM information_schema.columns
+        LEFT JOIN pg_catalog.pg_statio_all_tables st
+          ON st.relname = columns.table_name AND st.schemaname = columns.table_schema
+        LEFT JOIN pg_catalog.pg_description pgd
+          ON pgd.objoid = st.relid AND pgd.objsubid = columns.ordinal_position
         WHERE table_name = $1 AND table_schema = $2
         ORDER BY ordinal_position
       `, [parsed.table, parsed.schema])
@@ -494,7 +635,7 @@ class PostgreSQLAdapter {
     } catch (e) { return { error: e.message } }
   }
 
-  async createTable(table, columnsSql, dbName, schemaName) {
+  async createTable(table, columnsSql, dbName, schemaName, comments = {}) {
     try {
       const tableName = assertSimpleIdentifier(table, 'Table name')
       const schema = assertSimpleIdentifier(schemaName || 'public', 'Schema name')
@@ -503,7 +644,151 @@ class PostgreSQLAdapter {
       const ref = `"${schema}"."${tableName}"`
       return this._withClient(dbName, async client => {
         await client.query(`CREATE TABLE ${ref} (${definition})`)
+        for (const [columnName, comment] of Object.entries(comments || {})) {
+          if (!comment) continue
+          const safeColumn = assertSimpleIdentifier(columnName, 'Column name')
+          const safeComment = String(comment)
+          await client.query(`COMMENT ON COLUMN ${ref}."${safeColumn}" IS $1`, [safeComment])
+        }
         return { success: true }
+        })
+      } catch (e) { return { error: e.message } }
+    }
+
+  async deleteTable(table, dbName, schemaName, itemType = 'table') {
+    try {
+      const parsed = this._parseTable(table)
+      const schema = assertSimpleIdentifier(schemaName || parsed.schema || 'public', 'Schema name')
+      const tableName = assertSimpleIdentifier(parsed.table, 'Table name')
+      const ref = `${quotePgIdentifier(schema)}.${quotePgIdentifier(tableName)}`
+      const kind = itemType === 'view' ? 'VIEW' : 'TABLE'
+      return this._withClient(dbName, async client => {
+        await client.query(`DROP ${kind} ${ref}`)
+        return { success: true }
+      })
+    } catch (e) { return { error: e.message } }
+  }
+
+  async updateTableSchema(table, nextTable, columnsSql, dbName, schemaName, comments = {}) {
+    try {
+      const parsed = this._parseTable(table)
+      const currentTable = assertSimpleIdentifier(parsed.table, 'Table name')
+      const targetTable = assertSimpleIdentifier(nextTable, 'Table name')
+      const schema = assertSimpleIdentifier(schemaName || parsed.schema || 'public', 'Schema name')
+      const definition = String(columnsSql || '').trim()
+      if (!definition) return { error: 'Column definition is required' }
+
+      return this._withClient(dbName, async client => {
+        const { rows: existingColumns } = await client.query(`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = $2
+          ORDER BY ordinal_position
+        `, [schema, currentTable])
+        if (!existingColumns.length) return { error: 'Table not found' }
+
+        const relationRef = `${schema}.${currentTable}`
+        const { rows: inboundForeignKeys } = await client.query(`
+          SELECT
+            src_ns.nspname AS schema_name,
+            src.relname AS table_name,
+            con.conname AS constraint_name,
+            pg_get_constraintdef(con.oid, true) AS constraint_def
+          FROM pg_constraint con
+          JOIN pg_class src ON src.oid = con.conrelid
+          JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+          WHERE con.contype = 'f' AND con.confrelid = $1::regclass
+        `, [relationRef]).catch(() => ({ rows: [] }))
+
+        const { rows: dependentViews } = await client.query(`
+          SELECT
+            view_ns.nspname AS schema_name,
+            view_cls.relname AS view_name,
+            view_cls.relkind AS relkind,
+            pg_get_viewdef(view_cls.oid, true) AS definition
+          FROM pg_depend dep
+          JOIN pg_rewrite rw ON rw.oid = dep.objid
+          JOIN pg_class view_cls ON view_cls.oid = rw.ev_class
+          JOIN pg_namespace view_ns ON view_ns.oid = view_cls.relnamespace
+          WHERE dep.refobjid = $1::regclass
+            AND view_cls.relkind IN ('v', 'm')
+        `, [relationRef]).catch(() => ({ rows: [] }))
+
+        const tempTable = `__tmp_edit_${Date.now()}`
+        const backupTable = `__old_${Date.now()}`
+        const quotedSchema = `"${schema}"`
+        const quotedCurrent = `${quotedSchema}."${currentTable}"`
+        const quotedTarget = `${quotedSchema}."${targetTable}"`
+        const quotedTemp = `${quotedSchema}."${tempTable}"`
+        const quotedBackup = `${quotedSchema}."${backupTable}"`
+
+        await client.query('BEGIN')
+        try {
+          for (const fk of inboundForeignKeys) {
+            await client.query(`ALTER TABLE ${quotePgIdentifier(fk.schema_name)}.${quotePgIdentifier(fk.table_name)} DROP CONSTRAINT ${quotePgIdentifier(fk.constraint_name)}`)
+          }
+
+          for (const view of dependentViews) {
+            const qualifiedView = `${quotePgIdentifier(view.schema_name)}.${quotePgIdentifier(view.view_name)}`
+            if (view.relkind === 'm') {
+              await client.query(`DROP MATERIALIZED VIEW ${qualifiedView}`)
+            } else {
+              await client.query(`DROP VIEW ${qualifiedView}`)
+            }
+          }
+
+          await client.query(`CREATE TABLE ${quotedTemp} (${definition})`)
+
+          const { rows: nextColumns } = await client.query(`
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = $1 AND table_name = $2
+            ORDER BY ordinal_position
+          `, [schema, tempTable])
+
+          const existingNames = new Set(existingColumns.map(column => column.column_name))
+          const sharedColumns = nextColumns
+            .map(column => column.column_name)
+            .filter(name => existingNames.has(name))
+
+          if (sharedColumns.length > 0) {
+            const projection = sharedColumns.map(name => `"${name}"`).join(', ')
+            await client.query(`INSERT INTO ${quotedTemp} (${projection}) SELECT ${projection} FROM ${quotedCurrent}`)
+          }
+
+          await client.query(`ALTER TABLE ${quotedCurrent} RENAME TO "${backupTable}"`)
+          await client.query(`ALTER TABLE ${quotedTemp} RENAME TO "${targetTable}"`)
+          for (const [columnName, comment] of Object.entries(comments || {})) {
+            const safeColumn = assertSimpleIdentifier(columnName, 'Column name')
+            if (!comment) {
+              await client.query(`COMMENT ON COLUMN ${quotedTarget}."${safeColumn}" IS NULL`)
+              continue
+            }
+            await client.query(`COMMENT ON COLUMN ${quotedTarget}."${safeColumn}" IS $1`, [String(comment)])
+          }
+
+          for (const fk of inboundForeignKeys) {
+            const rewrittenDef = replacePgQualifiedName(fk.constraint_def, schema, currentTable, targetTable)
+            await client.query(`ALTER TABLE ${quotePgIdentifier(fk.schema_name)}.${quotePgIdentifier(fk.table_name)} ADD CONSTRAINT ${quotePgIdentifier(fk.constraint_name)} ${rewrittenDef}`)
+          }
+
+          for (const view of dependentViews) {
+            const qualifiedView = `${quotePgIdentifier(view.schema_name)}.${quotePgIdentifier(view.view_name)}`
+            const rewrittenDef = replacePgQualifiedName(view.definition, schema, currentTable, targetTable)
+            if (view.relkind === 'm') {
+              await client.query(`CREATE MATERIALIZED VIEW ${qualifiedView} AS ${rewrittenDef}`)
+            } else {
+              await client.query(`CREATE VIEW ${qualifiedView} AS ${rewrittenDef}`)
+            }
+          }
+
+          await client.query(`DROP TABLE ${quotedBackup}`)
+          await client.query('COMMIT')
+          return { success: true }
+        } catch (error) {
+          await client.query('ROLLBACK')
+          return { error: error.message }
+        }
       })
     } catch (e) { return { error: e.message } }
   }
@@ -520,7 +805,10 @@ class MongoDBAdapter {
     return colls.map(c => ({ name: c.name, type: 'table' }))
   }
 
-  async getTableData(table, page, limit) {
+  async getTableData(table, page, limit, _dbName, filter) {
+    if (String(filter || '').trim()) {
+      return { error: 'Advanced SQL filter is not supported for MongoDB collections yet' }
+    }
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
     const coll = this.db.collection(table)
@@ -759,7 +1047,7 @@ ipcMain.handle('db:connect-remote', async (_, cfg) => {
     let port = Number(cfg.port)
 
     if (cfg.ssh) {
-      const tunnel = await createSSHTunnel(cfg.ssh, host, port)
+      const tunnel = await createSSHTunnel(cfg.ssh, host, port, { keepAlive: cfg.keepAlive })
       host = '127.0.0.1'
       port = tunnel.port
       sshCleanup = tunnel.close
@@ -789,7 +1077,7 @@ ipcMain.handle('db:test-connection', async (_, cfg) => {
     let host = cfg.host
     let port = Number(cfg.port)
     if (cfg.ssh) {
-      const tunnel = await createSSHTunnel(cfg.ssh, host, port)
+      const tunnel = await createSSHTunnel(cfg.ssh, host, port, { keepAlive: cfg.keepAlive })
       host = '127.0.0.1'; port = tunnel.port; sshCleanup = tunnel.close
     }
     const adapter = await buildAdapter({ ...cfg, host, port })
@@ -829,10 +1117,10 @@ ipcMain.handle('db:list-tables-for-db', async (_, id, dbName) => {
   try { return await conn.adapter.listTablesForDatabase(dbName) } catch (e) { return { error: e.message } }
 })
 
-ipcMain.handle('db:table-data', async (_, id, table, page, limit, dbName) => {
+ipcMain.handle('db:table-data', async (_, id, table, page, limit, dbName, filter) => {
   const conn = connections.get(id)
   if (!conn) return { error: 'Connection not found' }
-  try { return await conn.adapter.getTableData(table, page, limit, dbName) } catch (e) { return { error: e.message } }
+  try { return await conn.adapter.getTableData(table, page, limit, dbName, filter) } catch (e) { return { error: e.message } }
 })
 
 ipcMain.handle('db:table-structure', async (_, id, table, dbName) => {
@@ -853,11 +1141,25 @@ ipcMain.handle('db:insert-row', async (_, id, table, data, dbName) => {
   try { return await conn.adapter.insertRow(table, data, dbName) } catch (e) { return { error: e.message } }
 })
 
-ipcMain.handle('db:create-table', async (_, id, table, columnsSql, dbName, schemaName) => {
+ipcMain.handle('db:create-table', async (_, id, table, columnsSql, dbName, schemaName, comments) => {
   const conn = connections.get(id)
   if (!conn) return { error: 'Connection not found' }
   if (typeof conn.adapter.createTable !== 'function') return { error: 'Create table is not supported for this connection' }
-  try { return await conn.adapter.createTable(table, columnsSql, dbName, schemaName) } catch (e) { return { error: e.message } }
+  try { return await conn.adapter.createTable(table, columnsSql, dbName, schemaName, comments) } catch (e) { return { error: e.message } }
+})
+
+ipcMain.handle('db:update-table-schema', async (_, id, table, nextTable, columnsSql, dbName, schemaName, comments) => {
+  const conn = connections.get(id)
+  if (!conn) return { error: 'Connection not found' }
+  if (typeof conn.adapter.updateTableSchema !== 'function') return { error: 'Edit table is not supported for this connection yet' }
+  try { return await conn.adapter.updateTableSchema(table, nextTable, columnsSql, dbName, schemaName, comments) } catch (e) { return { error: e.message } }
+})
+
+ipcMain.handle('db:delete-table', async (_, id, table, dbName, schemaName, itemType) => {
+  const conn = connections.get(id)
+  if (!conn) return { error: 'Connection not found' }
+  if (typeof conn.adapter.deleteTable !== 'function') return { error: 'Delete table is not supported for this connection yet' }
+  try { return await conn.adapter.deleteTable(table, dbName, schemaName, itemType) } catch (e) { return { error: e.message } }
 })
 
 ipcMain.handle('db:update-row', async (_, id, table, rowid, data, dbName) => {
