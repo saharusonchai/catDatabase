@@ -1,10 +1,11 @@
 import { create } from 'zustand'
-import type { Connection, Tab, StatusInfo, SubTab, IpcConnectionResult, ConnectionConfig, SavedConnection, DatabaseNode, TableItem, GridFooterState } from '../types'
+import type { Connection, Tab, StatusInfo, SubTab, IpcConnectionResult, ConnectionConfig, SavedConnection, DatabaseNode, TableItem, GridFooterState, AuthPayload, AuthUser, QueryContext } from '../types'
 
 const api = window.electronAPI
 
 // ── localStorage persistence ──────────────────────────────────────────────────
 const STORAGE_KEY = 'catdb_saved_connections'
+const AUTH_TOKEN_KEY = 'catdb_auth_token'
 
 function loadSaved(): SavedConnection[] {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] }
@@ -28,10 +29,6 @@ function upsertSaved(list: SavedConnection[], config: ConnectionConfig, label: s
   return next.slice(0, 20) // keep max 20
 }
 
-function getConnectionFingerprint(input: Pick<ConnectionConfig, 'dbType' | 'host' | 'port' | 'database' | 'username'>) {
-  return `${input.dbType}:${input.host}:${input.port}:${input.database}:${input.username}`
-}
-
 // ── Store shape ───────────────────────────────────────────────────────────────
 
 interface AppState {
@@ -47,6 +44,9 @@ interface AppState {
   hasLoadedSavedConnections: boolean
   hasRestoredSavedConnections: boolean
   gridFooter: GridFooterState | null
+  authUser: AuthUser | null
+  authToken: string | null
+  authLoading: boolean
 }
 
 interface AppActions {
@@ -59,8 +59,10 @@ interface AppActions {
   createDatabase:  () => Promise<Connection | null>
   openDemo:        () => Promise<Connection | null>
   connectRemote:   (config: ConnectionConfig) => Promise<Connection | null>
+  activateSavedConnection: (id: string) => Promise<Connection | null>
   restoreSavedConnections: () => Promise<void>
   openEditConnectionModal: (connectionId: string) => void
+  openEditSavedConnectionModal: (savedId: string) => void
   closeConnection: (id: string) => Promise<void>
   openConnectModal:    () => void
   closeConnectModal:   () => void
@@ -74,9 +76,13 @@ interface AppActions {
   openCreateTable: (connection: Connection, database?: string, schemaName?: string) => void
   openEditTable:   (connection: Connection, tableName: string, database?: string, schemaName?: string) => void
   deleteTable:     (connection: Connection, tableName: string, database?: string, schemaName?: string, itemType?: 'table' | 'view') => Promise<RowMutationResult>
-  openQuery:       (connection: Connection) => void
+  openQuery:       (connection: Connection, context?: QueryContext) => void
   setStatus:       (status: StatusInfo) => void
   setGridFooter:   (footer: GridFooterState | null) => void
+  loadCurrentUser: () => Promise<void>
+  register:       (payload: AuthPayload) => Promise<boolean>
+  login:          (payload: AuthPayload) => Promise<boolean>
+  logout:         () => Promise<void>
 }
 
 type AppStore = AppState & AppActions
@@ -97,12 +103,16 @@ const useAppStore = create<AppStore>((set, get) => ({
   hasLoadedSavedConnections: false,
   hasRestoredSavedConnections: false,
   gridFooter: null,
+  authUser: null,
+  authToken: localStorage.getItem(AUTH_TOKEN_KEY),
+  authLoading: true,
 
   // ── Connection actions ────────────────────────────────────────────────────
   loadSavedConnections: async () => {
     if (get().hasLoadedSavedConnections) return
 
-    const result = await api.getSavedConnections()
+    const token = get().authToken
+    const result = await api.getSavedConnections(token)
     let saved = Array.isArray(result) ? result : []
 
     if (!Array.isArray(result) && result.error) {
@@ -112,7 +122,7 @@ const useAppStore = create<AppStore>((set, get) => ({
     if (saved.length === 0) {
       const legacy = loadLegacySavedConnections()
       if (legacy.length > 0) {
-        const persistResult = await api.setSavedConnections(legacy)
+        const persistResult = await api.setSavedConnections(token, legacy)
         if (persistResult.error) {
           set({ status: { message: persistResult.error, error: true } })
         } else {
@@ -223,11 +233,21 @@ const useAppStore = create<AppStore>((set, get) => ({
   },
 
   connectRemote: async (config) => {
+    const openConnectionIds = get().connections.map(connection => connection.id)
+    if (openConnectionIds.length > 0) {
+      await Promise.all(openConnectionIds.map(id => api.closeDatabase(id)))
+      set({ connections: [], tabs: [], activeTabId: null, subTabs: {}, gridFooter: null })
+    }
+
     const conn = await api.connectRemote(config)
     const result = await get()._addConnection(conn)
     if (result) {
-      const next = upsertSaved(get().savedConnections, config, result.name)
-      const persistResult = await api.setSavedConnections(next)
+      const editingId = get().editingConnectionId
+      const savedSource = editingId?.startsWith('saved:')
+        ? get().savedConnections.filter(item => item.id !== editingId.slice('saved:'.length))
+        : get().savedConnections
+      const next = upsertSaved(savedSource, config, result.name)
+      const persistResult = await api.setSavedConnections(get().authToken, next)
       if (persistResult.error) {
         set({ status: { message: persistResult.error, error: true } })
       } else {
@@ -246,25 +266,20 @@ const useAppStore = create<AppStore>((set, get) => ({
     return result
   },
 
+  activateSavedConnection: async (id) => {
+    const saved = get().savedConnections.find(item => item.id === id)
+    if (!saved) {
+      set({ status: { message: 'Saved connection not found', error: true } })
+      return null
+    }
+
+    return get().connectRemote(saved.config)
+  },
+
   restoreSavedConnections: async () => {
     if (get().hasRestoredSavedConnections) return
     set({ hasRestoredSavedConnections: true })
     await get().loadSavedConnections()
-
-    const saved = get().savedConnections
-    if (saved.length === 0) return
-
-    for (const item of saved) {
-      const cfg = item.config
-      const fingerprint = getConnectionFingerprint(cfg)
-      const duplicate = get().connections.some(connection => (
-        connection.config
-          ? getConnectionFingerprint(connection.config) === fingerprint
-          : connection.dbType === cfg.dbType && connection.filePath === `${cfg.dbType}://${cfg.host}:${cfg.port}/${cfg.database || ''}`
-      ))
-      if (duplicate) continue
-      await get().connectRemote(cfg)
-    }
   },
 
   openEditConnectionModal: (connectionId) => {
@@ -277,28 +292,26 @@ const useAppStore = create<AppStore>((set, get) => ({
     })
   },
 
+  openEditSavedConnectionModal: (savedId) => {
+    const saved = get().savedConnections.find(item => item.id === savedId)
+    if (!saved?.config) return
+    set({
+      showConnectModal: true,
+      editingConnectionId: `saved:${savedId}`,
+      editingConnectionConfig: saved.config,
+    })
+  },
+
   openConnectModal:  () => set({ showConnectModal: true, editingConnectionId: null, editingConnectionConfig: null }),
   closeConnectModal: () => set({ showConnectModal: false, editingConnectionId: null, editingConnectionConfig: null }),
 
   deleteSavedConnection: (id) => {
     const next = get().savedConnections.filter(s => s.id !== id)
-    void api.setSavedConnections(next)
+    void api.setSavedConnections(get().authToken, next)
     set({ savedConnections: next, hasLoadedSavedConnections: true })
   },
 
   closeConnection: async (id) => {
-    const connection = get().connections.find(item => item.id === id)
-    if (connection?.config) {
-      const savedId = getSavedConnectionId(connection.config)
-      const next = get().savedConnections.filter(item => item.id !== savedId)
-      const persistResult = await api.setSavedConnections(next)
-      if (persistResult.error) {
-        set({ status: { message: persistResult.error, error: true } })
-      } else {
-        set({ savedConnections: next, hasLoadedSavedConnections: true })
-      }
-    }
-
     await api.closeDatabase(id)
     set(state => {
       const remainingTabs = state.tabs.filter(t => t.connectionId !== id)
@@ -430,20 +443,100 @@ const useAppStore = create<AppStore>((set, get) => ({
     return result
   },
 
-  openQuery: (connection) => {
+  openQuery: (connection, context = {}) => {
     const tabId = `query::${connection.id}::${Date.now()}`
+    const scope = context.tableName || context.database
     get().openTab({
       id: tabId,
       type: 'query',
       connectionId: connection.id,
       connectionName: connection.name,
-      label: `Query — ${connection.name}`,
+      database: context.database,
+      tableName: context.tableName,
+      label: scope ? `Query — ${scope}` : `Query — ${connection.name}`,
     })
   },
 
   // ── Status ────────────────────────────────────────────────────────────────
   setStatus: (status) => set({ status }),
   setGridFooter: (gridFooter) => set({ gridFooter }),
+
+  loadCurrentUser: async () => {
+    const token = get().authToken
+    if (!token) {
+      set({ authUser: null, authLoading: false })
+      return
+    }
+
+    const result = await api.getCurrentUser(token)
+    if (result.user) {
+      set({ authUser: result.user, authLoading: false })
+      return
+    }
+
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    set({ authUser: null, authToken: null, authLoading: false })
+  },
+
+  register: async (payload) => {
+    const result = await api.register(payload)
+    if (result.error || !result.user || !result.token) {
+      set({ status: { message: result.error || 'Unable to register', error: true } })
+      return false
+    }
+
+    localStorage.setItem(AUTH_TOKEN_KEY, result.token)
+    set({
+      authUser: result.user,
+      authToken: result.token,
+      authLoading: false,
+      savedConnections: [],
+      hasLoadedSavedConnections: false,
+      hasRestoredSavedConnections: false,
+      status: { message: `Signed in as ${result.user.username}` },
+    })
+    return true
+  },
+
+  login: async (payload) => {
+    const result = await api.login(payload)
+    if (result.error || !result.user || !result.token) {
+      set({ status: { message: result.error || 'Unable to log in', error: true } })
+      return false
+    }
+
+    localStorage.setItem(AUTH_TOKEN_KEY, result.token)
+    set({
+      authUser: result.user,
+      authToken: result.token,
+      authLoading: false,
+      savedConnections: [],
+      hasLoadedSavedConnections: false,
+      hasRestoredSavedConnections: false,
+      status: { message: `Welcome back, ${result.user.username}` },
+    })
+    return true
+  },
+
+  logout: async () => {
+    const token = get().authToken
+    const openConnectionIds = get().connections.map(connection => connection.id)
+    await Promise.all(openConnectionIds.map(id => api.closeDatabase(id)))
+    await api.logout(token)
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    set({
+      authUser: null,
+      authToken: null,
+      tabs: [],
+      activeTabId: null,
+      subTabs: {},
+      connections: [],
+      savedConnections: [],
+      hasLoadedSavedConnections: false,
+      hasRestoredSavedConnections: false,
+      status: { message: 'Signed out' },
+    })
+  },
 }))
 
 export default useAppStore

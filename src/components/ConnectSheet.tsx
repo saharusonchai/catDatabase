@@ -277,7 +277,7 @@ export default function ConnectSheet() {
     setConnecting(true)
     const previousConnectionId = editingConnectionId
     const result = await connectRemote(buildConfig())
-    if (result && previousConnectionId) {
+    if (result && previousConnectionId && !previousConnectionId.startsWith('saved:')) {
       await closeConnection(previousConnectionId)
     }
     setConnecting(false)

@@ -71,6 +71,11 @@ export interface Tab {
   label: string
 }
 
+export interface QueryContext {
+  database?: string
+  tableName?: string
+}
+
 export interface StatusInfo {
   message: string
   rows?: number
@@ -187,6 +192,26 @@ export interface PersistResult {
   error?: string
 }
 
+export interface AuthUser {
+  id: string
+  username: string
+  email: string
+  createdAt: string
+}
+
+export interface AuthPayload {
+  username?: string
+  email?: string
+  password: string
+}
+
+export interface AuthResult {
+  user?: AuthUser | null
+  token?: string
+  success?: boolean
+  error?: string
+}
+
 // ── Electron API (window.electronAPI) ────────────────────────────────────────
 
 export interface ElectronAPI {
@@ -199,8 +224,12 @@ export interface ElectronAPI {
   createTable:        (id: string, table: string, columnsSql: string, db?: string, schema?: string, comments?: Record<string, string>) => Promise<RowMutationResult>
   updateTableSchema:  (id: string, table: string, nextTable: string, columnsSql: string, db?: string, schema?: string, comments?: Record<string, string>) => Promise<RowMutationResult>
   deleteTable:        (id: string, table: string, db?: string, schema?: string, itemType?: 'table' | 'view') => Promise<RowMutationResult>
-  getSavedConnections: ()                                         => Promise<SavedConnection[] | { error: string }>
-  setSavedConnections: (list: SavedConnection[])                  => Promise<PersistResult>
+  getSavedConnections: (token: string | null)                     => Promise<SavedConnection[] | { error: string }>
+  setSavedConnections: (token: string | null, list: SavedConnection[]) => Promise<PersistResult>
+  register:          (payload: AuthPayload)                       => Promise<AuthResult>
+  login:             (payload: AuthPayload)                       => Promise<AuthResult>
+  getCurrentUser:    (token: string | null)                       => Promise<AuthResult>
+  logout:            (token: string | null)                       => Promise<PersistResult>
   listTables:         (id: string)                               => Promise<TableItem[] | { error: string }>
   listDatabases:      (id: string)                               => Promise<DatabaseNode[] | { error: string }>
   listTablesForDb:    (id: string, dbName: string)               => Promise<TableItem[] | { error: string }>
@@ -209,7 +238,7 @@ export interface ElectronAPI {
   insertRow:          (id: string, table: string, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
   updateRow:          (id: string, table: string, rowid: number, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
   deleteRow:          (id: string, table: string, rowid: number, db?: string) => Promise<RowMutationResult>
-  runQuery:           (id: string, sql: string)                  => Promise<QueryResult>
+  runQuery:           (id: string, sql: string, db?: string)     => Promise<QueryResult>
 }
 
 // ── Global augmentation ───────────────────────────────────────────────────────

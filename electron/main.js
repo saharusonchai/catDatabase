@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electro
 const fs = require('fs')
 const path = require('path')
 const net  = require('net')
+const crypto = require('crypto')
 
 const isDev = process.env.NODE_ENV !== 'production'
 
@@ -16,6 +17,37 @@ try { ssh2Lib = require('ssh2')             } catch (_) {}
 const KEEPALIVE_INTERVAL_SECONDS = 240
 const KEEPALIVE_INTERVAL_MS = KEEPALIVE_INTERVAL_SECONDS * 1000
 const SAVED_CONNECTIONS_FILE = 'saved-connections.json'
+const AUTH_TOKEN_BYTES = 32
+const PASSWORD_KEY_BYTES = 64
+const PASSWORD_SALT_BYTES = 16
+const AUTH_SESSION_DAYS = 30
+const sessions = new Map()
+
+function loadEnvFile() {
+  const envPath = path.join(process.cwd(), '.env')
+  if (!fs.existsSync(envPath)) return
+
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const separator = trimmed.indexOf('=')
+    if (separator < 1) continue
+
+    const key = trimmed.slice(0, separator).trim()
+    let value = trimmed.slice(separator + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+
+    if (process.env[key] === undefined) process.env[key] = value
+  }
+}
+
+loadEnvFile()
 
 function getSavedConnectionsPath() {
   return path.join(app.getPath('userData'), SAVED_CONNECTIONS_FILE)
@@ -39,6 +71,278 @@ function writeSavedConnectionsFile(list) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, JSON.stringify(Array.isArray(list) ? list : [], null, 2), 'utf8')
   return true
+}
+
+function assertSessionUser(token) {
+  const session = sessions.get(String(token || ''))
+  if (!session?.user?.id) throw new Error('Please sign in again')
+  return session.user
+}
+
+function normalizeSavedConnection(input) {
+  const config = input && typeof input.config === 'object' && input.config !== null ? input.config : null
+  if (!config) return null
+
+  const id = String(input.id || '').trim()
+  const label = String(input.label || config.name || id || 'Untitled Connection').trim()
+  const lastUsed = Number(input.lastUsed || Date.now())
+
+  if (!id || !label) return null
+  return {
+    id,
+    label,
+    config,
+    lastUsed: Number.isFinite(lastUsed) ? lastUsed : Date.now(),
+  }
+}
+
+function normalizeSavedConnectionsList(list) {
+  if (!Array.isArray(list)) return []
+  const seen = new Set()
+  const normalized = []
+
+  for (const item of list) {
+    const saved = normalizeSavedConnection(item)
+    if (!saved || seen.has(saved.id)) continue
+    seen.add(saved.id)
+    normalized.push(saved)
+    if (normalized.length >= 20) break
+  }
+
+  return normalized
+}
+
+async function readSavedConnectionsForUser(userId) {
+  const saved = await withAuthClient(async client => {
+    const { rows } = await client.query(
+      `SELECT connection_key, label, config, last_used_at
+       FROM app_user_connections
+       WHERE user_id = $1
+       ORDER BY last_used_at DESC, updated_at DESC`,
+      [userId]
+    )
+
+    return rows.map(row => ({
+      id: row.connection_key,
+      label: row.label,
+      config: row.config,
+      lastUsed: row.last_used_at ? new Date(row.last_used_at).getTime() : Date.now(),
+    }))
+  })
+
+  if (saved.length > 0) return saved
+
+  const legacy = normalizeSavedConnectionsList(readSavedConnectionsFile())
+  if (legacy.length > 0) {
+    await writeSavedConnectionsForUser(userId, legacy)
+  }
+  return legacy
+}
+
+async function writeSavedConnectionsForUser(userId, list) {
+  const saved = normalizeSavedConnectionsList(list)
+
+  await withAuthClient(async client => {
+    await client.query('BEGIN')
+    try {
+      await client.query('DELETE FROM app_user_connections WHERE user_id = $1', [userId])
+
+      for (const item of saved) {
+        await client.query(
+          `INSERT INTO app_user_connections (user_id, connection_key, label, config, last_used_at)
+           VALUES ($1, $2, $3, $4::jsonb, to_timestamp($5 / 1000.0))`,
+          [userId, item.id, item.label, JSON.stringify(item.config), item.lastUsed]
+        )
+      }
+
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw error
+    }
+  })
+
+  return saved
+}
+
+function getAuthPgConfig() {
+  const connectionString = process.env.CATDB_AUTH_DATABASE_URL || process.env.DATABASE_URL
+  if (connectionString) {
+    if (hasAuthSshConfig()) return parsePgConnectionString(connectionString)
+    return {
+      connectionString,
+      ssl: process.env.CATDB_AUTH_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+    }
+  }
+
+  return {
+    host: process.env.CATDB_AUTH_HOST || process.env.PGHOST || '127.0.0.1',
+    port: Number(process.env.CATDB_AUTH_PORT || process.env.PGPORT || 5432),
+    user: process.env.CATDB_AUTH_USER || process.env.PGUSER || 'postgres',
+    password: process.env.CATDB_AUTH_PASSWORD || process.env.PGPASSWORD || '',
+    database: process.env.CATDB_AUTH_DATABASE || process.env.PGDATABASE || 'catdb',
+    ssl: process.env.CATDB_AUTH_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+    connectionTimeoutMillis: 10000,
+  }
+}
+
+function parsePgConnectionString(connectionString) {
+  const parsed = new URL(connectionString)
+  return {
+    host: parsed.hostname || '127.0.0.1',
+    port: Number(parsed.port || 5432),
+    user: decodeURIComponent(parsed.username || 'postgres'),
+    password: decodeURIComponent(parsed.password || ''),
+    database: decodeURIComponent(parsed.pathname.replace(/^\//, '') || 'catdb'),
+    ssl: process.env.CATDB_AUTH_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+    connectionTimeoutMillis: 10000,
+  }
+}
+
+function hasAuthSshConfig() {
+  return Boolean(process.env.CATDB_AUTH_SSH_HOST)
+}
+
+function getAuthSshConfig() {
+  return {
+    host: process.env.CATDB_AUTH_SSH_HOST,
+    port: Number(process.env.CATDB_AUTH_SSH_PORT || 22),
+    username: process.env.CATDB_AUTH_SSH_USER,
+    password: process.env.CATDB_AUTH_SSH_PASSWORD,
+    privateKey: process.env.CATDB_AUTH_SSH_PRIVATE_KEY,
+  }
+}
+
+async function withAuthClient(fn) {
+  if (!pgLib) throw new Error('pg module not available')
+  const { Client } = pgLib
+  const pgConfig = getAuthPgConfig()
+  let sshCleanup = null
+
+  if (hasAuthSshConfig()) {
+    const tunnel = await createSSHTunnel(
+      getAuthSshConfig(),
+      pgConfig.host,
+      Number(pgConfig.port) || 5432,
+      { keepAlive: process.env.CATDB_AUTH_SSH_KEEP_ALIVE === 'true' }
+    )
+    pgConfig.host = '127.0.0.1'
+    pgConfig.port = tunnel.port
+    sshCleanup = tunnel.close
+  }
+
+  const client = new Client(pgConfig)
+  try {
+    await client.connect()
+    return await fn(client)
+  } finally {
+    await client.end().catch(() => {})
+    if (sshCleanup) sshCleanup()
+  }
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(PASSWORD_SALT_BYTES).toString('hex')
+  const hash = crypto.scryptSync(password, salt, PASSWORD_KEY_BYTES).toString('hex')
+  return `scrypt:${salt}:${hash}`
+}
+
+function verifyPassword(password, storedHash) {
+  const [algorithm, salt, hash] = String(storedHash || '').split(':')
+  if (algorithm !== 'scrypt' || !salt || !hash) return false
+  const expected = Buffer.from(hash, 'hex')
+  const actual = crypto.scryptSync(password, salt, expected.length)
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual)
+}
+
+function sanitizeUser(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    createdAt: row.created_at,
+  }
+}
+
+function validateAuthInput({ username, email, password }, mode) {
+  const next = {
+    username: String(username || '').trim(),
+    email: String(email || '').trim().toLowerCase(),
+    password: String(password || ''),
+  }
+
+  if (mode === 'register') {
+    if (next.username.length < 3) throw new Error('Username must be at least 3 characters')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.email)) throw new Error('A valid email is required')
+  }
+
+  if (mode === 'login' && next.username.length < 1) {
+    throw new Error('Username is required')
+  }
+
+  if (next.password.length < 8) throw new Error('Password must be at least 8 characters')
+  return next
+}
+
+function hashAuthToken(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex')
+}
+
+async function createSession(user) {
+  const token = crypto.randomBytes(AUTH_TOKEN_BYTES).toString('hex')
+  sessions.set(token, { user, createdAt: Date.now() })
+  await withAuthClient(async client => {
+    await client.query(
+      `INSERT INTO app_user_sessions (user_id, token_hash, expires_at)
+       VALUES ($1, $2, now() + ($3::int * interval '1 day'))`,
+      [user.id, hashAuthToken(token), AUTH_SESSION_DAYS]
+    )
+  })
+  return token
+}
+
+async function getUserFromToken(token) {
+  const rawToken = String(token || '')
+  if (!rawToken) return null
+
+  const memorySession = sessions.get(rawToken)
+  if (memorySession?.user) return memorySession.user
+
+  const user = await withAuthClient(async client => {
+    const { rows } = await client.query(
+      `SELECT u.id, u.username, u.email, u.created_at
+       FROM app_user_sessions s
+       JOIN app_users u ON u.id = s.user_id
+       WHERE s.token_hash = $1
+         AND s.expires_at > now()
+       LIMIT 1`,
+      [hashAuthToken(rawToken)]
+    )
+
+    if (!rows[0]) return null
+
+    await client.query(
+      `UPDATE app_user_sessions
+       SET last_seen_at = now()
+       WHERE token_hash = $1`,
+      [hashAuthToken(rawToken)]
+    )
+
+    return sanitizeUser(rows[0])
+  })
+
+  if (user) sessions.set(rawToken, { user, createdAt: Date.now() })
+  return user
+}
+
+async function deleteSession(token) {
+  const rawToken = String(token || '')
+  sessions.delete(rawToken)
+  if (!rawToken) return
+  await withAuthClient(async client => {
+    await client.query('DELETE FROM app_user_sessions WHERE token_hash = $1', [hashAuthToken(rawToken)])
+  })
 }
 
 function assertSimpleIdentifier(value, label = 'Identifier') {
@@ -377,10 +681,13 @@ class MySQLAdapter {
     return { columns, foreignKeys: [], indices: [], sql: ddl }
   }
 
-  async runQuery(sql) {
+  async runQuery(sql, dbName) {
     const start = Date.now()
     const isSelect = /^(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|WITH)\b/i.test(sql.trim())
     try {
+      if (dbName) {
+        await this.conn.query(`USE \`${String(dbName).replace(/`/g, '``')}\``)
+      }
       if (isSelect) {
         const [rows] = await this.conn.execute(sql)
         return { rows: rows.map(r => ({ ...r })), elapsed: Date.now() - start, type: 'select' }
@@ -580,14 +887,16 @@ class PostgreSQLAdapter {
     })
   }
 
-  async runQuery(sql) {
+  async runQuery(sql, dbName) {
     const start = Date.now()
     try {
-      const { rows, rowCount } = await this.client.query(sql)
-      if (rows.length > 0 || /^(SELECT|WITH|EXPLAIN)\b/i.test(sql.trim())) {
-        return { rows, elapsed: Date.now() - start, type: 'select' }
-      }
-      return { changes: rowCount || 0, elapsed: Date.now() - start, type: 'exec' }
+      return await this._withClient(dbName, async client => {
+        const { rows, rowCount } = await client.query(sql)
+        if (rows.length > 0 || /^(SELECT|WITH|EXPLAIN)\b/i.test(sql.trim())) {
+          return { rows, elapsed: Date.now() - start, type: 'select' }
+        }
+        return { changes: rowCount || 0, elapsed: Date.now() - start, type: 'exec' }
+      })
     } catch (e) { return { error: e.message } }
   }
 
@@ -1129,10 +1438,10 @@ ipcMain.handle('db:table-structure', async (_, id, table, dbName) => {
   try { return await conn.adapter.getTableStructure(table, dbName) } catch (e) { return { error: e.message } }
 })
 
-ipcMain.handle('db:run-query', async (_, id, sql) => {
+ipcMain.handle('db:run-query', async (_, id, sql, dbName) => {
   const conn = connections.get(id)
   if (!conn) return { error: 'Connection not found' }
-  try { return await conn.adapter.runQuery(sql) } catch (e) { return { error: e.message } }
+  try { return await conn.adapter.runQuery(sql, dbName) } catch (e) { return { error: e.message } }
 })
 
 ipcMain.handle('db:insert-row', async (_, id, table, data, dbName) => {
@@ -1174,17 +1483,90 @@ ipcMain.handle('db:delete-row', async (_, id, table, rowid, dbName) => {
   try { return await conn.adapter.deleteRow(table, rowid, dbName) } catch (e) { return { error: e.message } }
 })
 
-ipcMain.handle('app:get-saved-connections', async () => {
+ipcMain.handle('app:get-saved-connections', async (_, token) => {
   try {
-    return readSavedConnectionsFile()
+    const user = assertSessionUser(token)
+    return await readSavedConnectionsForUser(user.id)
   } catch (e) {
     return { error: e.message }
   }
 })
 
-ipcMain.handle('app:set-saved-connections', async (_, list) => {
+ipcMain.handle('app:set-saved-connections', async (_, token, list) => {
   try {
-    writeSavedConnectionsFile(list)
+    const user = assertSessionUser(token)
+    await writeSavedConnectionsForUser(user.id, list)
+    return { success: true }
+  } catch (e) {
+    return { error: e.message }
+  }
+})
+
+ipcMain.handle('auth:register', async (_, payload) => {
+  try {
+    const input = validateAuthInput(payload || {}, 'register')
+    const passwordHash = hashPassword(input.password)
+    const user = await withAuthClient(async client => {
+      const { rows } = await client.query(
+        `INSERT INTO app_users (username, email, password_hash)
+         VALUES ($1, $2, $3)
+         RETURNING id, username, email, created_at`,
+        [input.username, input.email, passwordHash]
+      )
+      return sanitizeUser(rows[0])
+    })
+    const token = await createSession(user)
+    return { user, token }
+  } catch (e) {
+    if (e.code === '23505') return { error: 'Username or email already exists' }
+    return { error: e.message }
+  }
+})
+
+ipcMain.handle('auth:login', async (_, payload) => {
+  try {
+    const username = String(payload?.username || '').trim()
+    const password = String(payload?.password || '')
+    validateAuthInput({ username, password }, 'login')
+
+    const result = await withAuthClient(async client => {
+      const { rows } = await client.query(
+        `SELECT id, username, email, password_hash, created_at
+         FROM app_users
+         WHERE lower(username) = lower($1)`,
+        [username]
+      )
+      return rows[0] || null
+    })
+
+    if (!result || !verifyPassword(password, result.password_hash)) {
+      return { error: 'Invalid username or password' }
+    }
+
+    await withAuthClient(async client => {
+      await client.query('UPDATE app_users SET last_login_at = now() WHERE id = $1', [result.id])
+    })
+
+    const user = sanitizeUser(result)
+    const token = await createSession(user)
+    return { user, token }
+  } catch (e) {
+    return { error: e.message }
+  }
+})
+
+ipcMain.handle('auth:me', async (_, token) => {
+  try {
+    const user = await getUserFromToken(token)
+    return { user }
+  } catch (e) {
+    return { user: null, error: e.message }
+  }
+})
+
+ipcMain.handle('auth:logout', async (_, token) => {
+  try {
+    await deleteSession(token)
     return { success: true }
   } catch (e) {
     return { error: e.message }

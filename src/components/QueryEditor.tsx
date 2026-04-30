@@ -1,5 +1,10 @@
-import { useState, useCallback, useRef, useEffect, memo } from 'react'
-import type { QueryResult, StatusInfo, DbRow } from '../types'
+import { useState, useCallback, useRef, useEffect, memo, useMemo } from 'react'
+import CodeMirror from '@uiw/react-codemirror'
+import { sql as sqlLanguage } from '@codemirror/lang-sql'
+import { acceptCompletion, autocompletion, closeCompletion, CompletionContext, CompletionResult, startCompletion } from '@codemirror/autocomplete'
+import { EditorView, keymap } from '@codemirror/view'
+import useAppStore from '../store/appStore'
+import type { QueryResult, StatusInfo, DbRow, TableItem, DbType, ColumnInfo } from '../types'
 
 const api = window.electronAPI
 
@@ -86,6 +91,7 @@ interface Props {
   connectionId: string
   connectionName: string
   database?: string
+  tableName?: string
   onStatusChange?: (status: StatusInfo) => void
 }
 
@@ -96,20 +102,215 @@ const PRESETS = [
   { label: 'Schema',       sql: "SELECT sql FROM sqlite_master WHERE type='table' ORDER BY name;" },
 ]
 
-export default function QueryEditor({ connectionId, connectionName, database, onStatusChange }: Props) {
-  const [sql, setSql]         = useState("-- Write your SQL query here\n-- Press Ctrl+Enter to run\n\nSELECT * FROM sqlite_master\nWHERE type = 'table'\nORDER BY name;\n")
+const SQL_KEYWORDS = [
+  'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'GROUP BY', 'ORDER BY',
+  'LIMIT', 'OFFSET', 'INSERT INTO', 'UPDATE', 'DELETE FROM', 'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE',
+  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'DISTINCT', 'AND', 'OR', 'NOT', 'NULL', 'IS NULL', 'IS NOT NULL',
+  'BETWEEN', 'LIKE', 'IN', 'EXISTS', 'HAVING', 'UNION', 'UNION ALL', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+]
+
+const SQL_FUNCTIONS = [
+  'COUNT(*)', 'NOW()', 'CURRENT_DATE', 'CURRENT_TIMESTAMP', 'COALESCE()', 'LOWER()', 'UPPER()', 'TRIM()',
+  'ROUND()', 'CAST()', 'CONCAT()', 'DATE_TRUNC()', 'EXTRACT()',
+]
+
+function getDefaultSql() {
+  return ''
+}
+
+function tableOptionValue(table: TableItem, dbType?: DbType) {
+  if (dbType !== 'postgresql' || !table.schema || table.schema === 'public') {
+    return table.name
+  }
+  return `${table.schema}.${table.name}`
+}
+
+function normalizeIdentifier(value: string) {
+  return value
+    .trim()
+    .replace(/[`"]/g, '')
+    .replace(/\]|\[/g, '')
+}
+
+function getTableForStructure(value: string, dbType?: DbType) {
+  const normalized = normalizeIdentifier(value)
+  if (dbType === 'mysql') {
+    return normalized.split('.').pop() || normalized
+  }
+  return normalized
+}
+
+function shouldSuggestTables(prefix: string) {
+  return /\b(FROM|JOIN|UPDATE|INTO|TABLE|DESCRIBE|DESC)\s+[\w"`.[\]]*$/i.test(prefix)
+}
+
+export default function QueryEditor({ connectionId, connectionName, database, tableName, onStatusChange }: Props) {
+  const connection = useAppStore(s => s.connections.find(item => item.id === connectionId))
+  const loadDatabaseTables = useAppStore(s => s.loadDatabaseTables)
+  const dbType = connection?.dbType
+  const initialDatabase = database ?? connection?.config?.database ?? connection?.databases?.[0]?.name ?? ''
+
+  const [selectedDatabase, setSelectedDatabase] = useState(initialDatabase)
+  const [selectedTable, setSelectedTable] = useState(tableName ?? '')
+  const [sql, setSql] = useState(() => getDefaultSql(tableName, dbType))
   const [result, setResult]   = useState<QueryResult | null>(null)
   const [running, setRunning] = useState(false)
   const [editorHeight, setEditorHeight] = useState(200)
+  const [selectedColumns, setSelectedColumns] = useState<ColumnInfo[]>([])
   const dragging   = useRef(false)
   const dragStart  = useRef(0)
   const heightStart = useRef(0)
+
+  const databaseOptions = connection?.databases ?? []
+  const activeDatabaseNode = databaseOptions.find(item => item.name === selectedDatabase)
+  const tableOptions = activeDatabaseNode?.tables ?? (databaseOptions.length === 0 ? connection?.tables ?? [] : [])
+  const hasDatabaseSelector = databaseOptions.length > 0
+
+  useEffect(() => {
+    if (!connection || !selectedDatabase) return
+    const db = connection.databases?.find(item => item.name === selectedDatabase)
+    if (!db || db.tables !== null) return
+    void loadDatabaseTables(connection.id, selectedDatabase)
+  }, [connection, loadDatabaseTables, selectedDatabase])
+
+  useEffect(() => {
+    if (!selectedTable || tableOptions.length === 0) return
+    const exists = tableOptions.some(table => tableOptionValue(table, dbType) === selectedTable)
+    if (!exists) setSelectedTable('')
+  }, [dbType, selectedTable, tableOptions])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadColumns = async () => {
+      if (!connectionId || !selectedTable) {
+        setSelectedColumns([])
+        return
+      }
+      const result = await api.getTableStructure(connectionId, getTableForStructure(selectedTable, dbType), selectedDatabase || undefined)
+      if (cancelled) return
+      setSelectedColumns('columns' in result && Array.isArray(result.columns) ? result.columns : [])
+    }
+    void loadColumns()
+    return () => { cancelled = true }
+  }, [connectionId, dbType, selectedDatabase, selectedTable])
+
+  const completionSource = useMemo(() => {
+    const tableCompletions = tableOptions.map(table => {
+      const value = tableOptionValue(table, dbType)
+      return {
+        label: value,
+        type: table.type === 'view' ? 'interface' : 'class',
+        detail: table.type === 'view' ? 'view' : 'table',
+        apply: value,
+      }
+    })
+
+    const selectedColumnCompletions = selectedColumns.map(column => ({
+      label: column.name,
+      type: 'property',
+      detail: column.type,
+      apply: column.name,
+    }))
+
+    return async (context: CompletionContext): Promise<CompletionResult | null> => {
+      const before = context.state.sliceDoc(Math.max(0, context.pos - 120), context.pos)
+      const dotMatch = before.match(/([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?)\.$/)
+      if (dotMatch) {
+        const tableRef = getTableForStructure(dotMatch[1], dbType)
+        let columns = tableRef === selectedTable || tableRef === getTableForStructure(selectedTable, dbType)
+          ? selectedColumns
+          : []
+
+        if (columns.length === 0) {
+          const structure = await api.getTableStructure(connectionId, tableRef, selectedDatabase || undefined)
+          columns = 'columns' in structure && Array.isArray(structure.columns) ? structure.columns : []
+        }
+
+        return {
+          from: context.pos,
+          options: columns.map(column => ({
+            label: column.name,
+            type: 'property',
+            detail: column.type,
+            apply: column.name,
+          })),
+        }
+      }
+
+      const word = context.matchBefore(/[A-Za-z_][\w$]*/)
+      const tableContext = shouldSuggestTables(before)
+      if (!word && !context.explicit && !tableContext) return null
+
+      const from = word?.from ?? context.pos
+      const options = [
+        ...(tableContext ? tableCompletions : []),
+        ...selectedColumnCompletions,
+        ...SQL_KEYWORDS.map(keyword => ({ label: keyword, type: 'keyword', apply: keyword })),
+        ...SQL_FUNCTIONS.map(fn => ({ label: fn, type: 'function', apply: fn })),
+        ...(!tableContext ? tableCompletions : []),
+      ]
+
+      return { from, options, validFor: /^[\w$]*$/ }
+    }
+  }, [connectionId, dbType, selectedColumns, selectedDatabase, selectedTable, tableOptions])
+
+  const editorExtensions = useMemo(() => [
+    sqlLanguage(),
+    autocompletion({
+      override: [completionSource],
+      activateOnTyping: true,
+      maxRenderedOptions: 12,
+    }),
+    keymap.of([
+      { key: 'Tab', run: acceptCompletion },
+      { key: 'Ctrl-Space', run: startCompletion },
+      { key: 'Escape', run: closeCompletion },
+    ]),
+    EditorView.theme({
+      '&': {
+        height: `${editorHeight}px`,
+        backgroundColor: 'var(--bg-input)',
+        color: 'var(--text-primary)',
+        fontSize: '13px',
+      },
+      '.cm-scroller': {
+        fontFamily: "'JetBrains Mono', monospace",
+        lineHeight: '1.7',
+      },
+      '.cm-content': {
+        padding: '12px 16px',
+      },
+      '.cm-gutters': {
+        backgroundColor: 'var(--bg-input)',
+        color: 'var(--text-muted)',
+        borderRight: '1px solid var(--border)',
+      },
+      '.cm-activeLine, .cm-activeLineGutter': {
+        backgroundColor: 'rgba(121,187,255,0.06)',
+      },
+      '.cm-tooltip-autocomplete': {
+        backgroundColor: '#0f161f',
+        border: '1px solid #1b2735',
+        borderRadius: '10px',
+        boxShadow: '0 18px 45px rgba(0,0,0,0.35)',
+        overflow: 'hidden',
+      },
+      '.cm-tooltip-autocomplete ul': {
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: '12px',
+      },
+      '.cm-tooltip-autocomplete ul li[aria-selected]': {
+        backgroundColor: '#102235',
+        color: '#dbeafe',
+      },
+    }),
+  ], [completionSource, editorHeight])
 
   const runQuery = useCallback(async () => {
     if (!connectionId || !sql.trim()) return
     setRunning(true)
     setResult(null)
-    const res = await api.runQuery(connectionId, sql)
+    const res = await api.runQuery(connectionId, sql, selectedDatabase || undefined)
     setResult(res)
     if (res.error) {
       onStatusChange?.({ message: `Error: ${res.error}`, error: true })
@@ -119,24 +320,25 @@ export default function QueryEditor({ connectionId, connectionName, database, on
       onStatusChange?.({ message: `Query OK — ${res.changes ?? 0} rows affected`, time: res.elapsed })
     }
     setRunning(false)
-  }, [connectionId, sql, onStatusChange])
+  }, [connectionId, selectedDatabase, sql, onStatusChange])
+
+  const handleDatabaseChange = useCallback((value: string) => {
+    setSelectedDatabase(value)
+    setSelectedTable('')
+    setResult(null)
+    setSql(getDefaultSql(undefined, dbType))
+  }, [dbType])
+
+  const handleTableChange = useCallback((value: string) => {
+    setSelectedTable(value)
+    setResult(null)
+  }, [])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runQuery() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [runQuery])
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      const ta = e.currentTarget
-      const start = ta.selectionStart
-      const end   = ta.selectionEnd
-      setSql(prev => prev.substring(0, start) + '  ' + prev.substring(end))
-      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2 })
-    }
-  }, [])
 
   const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
     dragging.current  = true
@@ -157,7 +359,7 @@ export default function QueryEditor({ connectionId, connectionName, database, on
   }, [])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, width: '100%', height: '100%' }}>
       {/* Toolbar */}
       <div className="toolbar">
         <button className="btn btn-primary" onClick={runQuery} disabled={running || !connectionId} title="Ctrl+Enter">
@@ -174,22 +376,55 @@ export default function QueryEditor({ connectionId, connectionName, database, on
           <option value="" disabled>Presets…</option>
           {PRESETS.map(p => <option key={p.label} value={p.sql}>{p.label}</option>)}
         </select>
+        <div className="toolbar-sep" />
+        <select
+          value={selectedDatabase}
+          onChange={event => handleDatabaseChange(event.target.value)}
+          disabled={!hasDatabaseSelector}
+          style={{ minWidth: 132, background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '3px 8px', borderRadius: 4, fontSize: 11.5, outline: 'none', cursor: hasDatabaseSelector ? 'pointer' : 'not-allowed', opacity: hasDatabaseSelector ? 1 : 0.6 }}
+        >
+          {hasDatabaseSelector ? (
+            databaseOptions.map(item => <option key={item.name} value={item.name}>{item.name}</option>)
+          ) : (
+            <option value="">Current DB</option>
+          )}
+        </select>
+        <select
+          value={selectedTable}
+          onChange={event => handleTableChange(event.target.value)}
+          disabled={tableOptions.length === 0}
+          style={{ minWidth: 150, background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '3px 8px', borderRadius: 4, fontSize: 11.5, outline: 'none', cursor: tableOptions.length > 0 ? 'pointer' : 'not-allowed', opacity: tableOptions.length > 0 ? 1 : 0.6 }}
+        >
+          <option value="">Table...</option>
+          {tableOptions.map(table => {
+            const value = tableOptionValue(table, dbType)
+            return <option key={value} value={value}>{value}</option>
+          })}
+        </select>
         <div style={{ flex: 1 }} />
         {connectionId
-          ? <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>📎 {connectionName}{database ? ` (${database})` : ''}</span>
+          ? <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>📎 {connectionName}{selectedDatabase ? ` (${selectedDatabase})` : ''}</span>
           : <span style={{ fontSize: 11, color: 'var(--red)' }}>No connection selected</span>
         }
       </div>
 
       {/* Editor + divider */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <textarea
-          className="sql-editor"
+        <CodeMirror
           value={sql}
-          onChange={e => setSql(e.target.value)}
-          onKeyDown={handleKeyDown}
-          spellCheck={false}
-          style={{ width: '100%', height: editorHeight, padding: '12px 16px', display: 'block', borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}
+          height={`${editorHeight}px`}
+          extensions={editorExtensions}
+          basicSetup={{
+            foldGutter: false,
+            dropCursor: false,
+            allowMultipleSelections: false,
+            indentOnInput: true,
+            bracketMatching: true,
+            autocompletion: false,
+            highlightSelectionMatches: false,
+          }}
+          theme="dark"
+          onChange={value => setSql(value)}
           placeholder="SELECT * FROM ..."
         />
         <div onMouseDown={onDividerMouseDown}
@@ -201,8 +436,7 @@ export default function QueryEditor({ connectionId, connectionName, database, on
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {!result && !running && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', fontSize: 12.5, gap: 8 }}>
-            <span style={{ fontSize: 20 }}>⌨️</span>
-            Press <kbd style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: 'JetBrains Mono' }}>Ctrl+Enter</kbd> to run
+            <kbd style={{ background: 'var(--bg-hover)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 5px', fontSize: 11, fontFamily: 'JetBrains Mono' }}>Ctrl+Enter</kbd>
           </div>
         )}
         {running && (

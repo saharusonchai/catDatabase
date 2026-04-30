@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import useAppStore from './store/appStore'
 import type { SubTab } from './types'
 import Sidebar from './components/ExplorerSidebar'
@@ -8,6 +8,7 @@ import StructureView from './components/StructureView'
 import CreateTableView from './components/CreateTableView'
 import StatusBar from './components/StatusBar'
 import ConnectModal from './components/ConnectSheet'
+import AuthView from './components/AuthView'
 import { AiOutlineApi  } from "react-icons/ai";
 import { CiViewTable } from "react-icons/ci";
 
@@ -92,6 +93,8 @@ function HeaderBar() {
   const connections = useAppStore(s => s.connections)
   const tabs = useAppStore(s => s.tabs)
   const activeTabId = useAppStore(s => s.activeTabId)
+  const authUser = useAppStore(s => s.authUser)
+  const logout = useAppStore(s => s.logout)
   const [search, setSearch] = useState('')
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) ?? null
@@ -128,7 +131,10 @@ function HeaderBar() {
           <button
             type="button"
             disabled={!activeConnection}
-            onClick={() => activeConnection && openQuery(activeConnection)}
+            onClick={() => activeConnection && openQuery(activeConnection, {
+              database: activeTab?.database,
+              tableName: activeTab?.type === 'table' ? activeTab.tableName : activeTab?.tableName,
+            })}
             className="inline-flex min-h-[22px] min-w-[110px] flex-col items-center justify-center gap-1 rounded-lg border border-[#1d3851] bg-[#102235] px-3 py-1 text-sm font-semibold text-[#79bbff] transition hover:border-[#005FB8] hover:bg-[#121b25] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="inline-flex h-5 w-5 items-center justify-center">
@@ -139,17 +145,33 @@ function HeaderBar() {
         </div>
 
         <div className="flex items-center gap-2">
+          {authUser && (
+            <div className="hidden min-w-0 text-right lg:block">
+              <div className="truncate text-[12px] font-semibold text-slate-200">{authUser.username}</div>
+              <div className="truncate text-[11px] text-slate-500">{authUser.email}</div>
+            </div>
+          )}
           <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[#121821] hover:text-slate-200">
             <IconSettings />
           </button>
           <button
             type="button"
             disabled={!activeConnection}
-            onClick={() => activeConnection && openQuery(activeConnection)}
+            onClick={() => activeConnection && openQuery(activeConnection, {
+              database: activeTab?.database,
+              tableName: activeTab?.type === 'table' ? activeTab.tableName : activeTab?.tableName,
+            })}
             className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#005FB8] px-4 text-sm font-semibold text-white transition hover:bg-[#0b6ac4] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <IconRun />
             <span>Run SQL</span>
+          </button>
+          <button
+            type="button"
+            onClick={logout}
+            className="inline-flex h-11 items-center rounded-xl border border-[#1b2735] px-4 text-sm font-semibold text-slate-300 transition hover:border-[#244466] hover:bg-[#121821]"
+          >
+            Logout
           </button>
         </div>
       </div>
@@ -378,6 +400,7 @@ function MainContent() {
         connectionId={activeTab.connectionId}
         connectionName={activeTab.connectionName}
         database={activeTab.database}
+        tableName={activeTab.tableName}
         onStatusChange={setStatus}
       />
     )
@@ -471,6 +494,25 @@ function DataGridFooterBar() {
 
 export default function AppShell() {
   const showConnectModal = useAppStore(s => s.showConnectModal)
+  const authUser = useAppStore(s => s.authUser)
+  const authLoading = useAppStore(s => s.authLoading)
+  const loadCurrentUser = useAppStore(s => s.loadCurrentUser)
+
+  useEffect(() => {
+    void loadCurrentUser()
+  }, [loadCurrentUser])
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#0b0f14] text-sm font-semibold text-slate-400">
+        Loading CatDB...
+      </div>
+    )
+  }
+
+  if (!authUser) {
+    return <AuthView />
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#0b0f14] text-slate-100">

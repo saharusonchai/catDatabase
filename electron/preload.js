@@ -12,8 +12,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createTable:     (id, table, columnsSql, db, schema, comments) => ipcRenderer.invoke('db:create-table', id, table, columnsSql, db, schema, comments),
   updateTableSchema: (id, table, nextTable, columnsSql, db, schema, comments) => ipcRenderer.invoke('db:update-table-schema', id, table, nextTable, columnsSql, db, schema, comments),
   deleteTable:     (id, table, db, schema, itemType) => ipcRenderer.invoke('db:delete-table', id, table, db, schema, itemType),
-  getSavedConnections: ()                          => ipcRenderer.invoke('app:get-saved-connections'),
-  setSavedConnections: (list)                      => ipcRenderer.invoke('app:set-saved-connections', list),
+  getSavedConnections: (token)                     => ipcRenderer.invoke('app:get-saved-connections', token),
+  setSavedConnections: (token, list)               => ipcRenderer.invoke('app:set-saved-connections', token, list),
+
+  // ── Auth ─────────────────────────────────────────────────────────────────
+  register:        (payload)                       => ipcRenderer.invoke('auth:register', payload),
+  login:           (payload)                       => ipcRenderer.invoke('auth:login', payload),
+  getCurrentUser:  (token)                         => ipcRenderer.invoke('auth:me', token),
+  logout:          (token)                         => ipcRenderer.invoke('auth:logout', token),
 
   // ── Shared ────────────────────────────────────────────────────────────────
   closeDatabase:      (id)                         => ipcRenderer.invoke('db:close', id),
@@ -25,5 +31,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   insertRow:          (id, table, data, db)        => ipcRenderer.invoke('db:insert-row', id, table, data, db),
   updateRow:          (id, table, rowid, data, db) => ipcRenderer.invoke('db:update-row', id, table, rowid, data, db),
   deleteRow:          (id, table, rowid, db)       => ipcRenderer.invoke('db:delete-row', id, table, rowid, db),
-  runQuery:           (id, sql)                    => ipcRenderer.invoke('db:run-query', id, sql),
+  runQuery:           (id, sql, db)                => ipcRenderer.invoke('db:run-query', id, sql, db),
 })

@@ -1,6 +1,6 @@
 import { useState, useCallback, memo, useEffect } from 'react'
 import useAppStore from '../store/appStore'
-import type { Connection, DatabaseNode } from '../types'
+import type { Connection, DatabaseNode, SavedConnection } from '../types'
 
 const IconDatabase = ({ tone = 'currentColor' }: { tone?: string }) => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={tone} strokeWidth="1.2">
@@ -63,6 +63,9 @@ const IconTrash = () => (
     <path d="M5.1 5.2v2.8M6.9 5.2v2.8" />
   </svg>
 )
+
+const getSavedConnectionId = (config: SavedConnection['config']) =>
+  `${config.dbType}:${config.host}:${config.port}:${config.database}:${config.username}`
 
 function DeleteTableConfirm({
   tableName,
@@ -160,7 +163,7 @@ const TableList = memo(function TableList({
       <button
         type="button"
         className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-slate-500 transition-colors hover:bg-[#131a24] hover:text-[#79bbff]"
-        onClick={() => openQuery(connection)}
+        onClick={() => openQuery(connection, { database: databaseName })}
       >
         <span className="inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center"><IconBolt /></span>
         <span>New Query</span>
@@ -321,19 +324,69 @@ const ConnectionItem = memo(function ConnectionItem({
   )
 })
 
+const SavedConnectionItem = memo(function SavedConnectionItem({
+  saved,
+  activating,
+  onActivate,
+  onContextMenu,
+}: {
+  saved: SavedConnection
+  activating: boolean
+  onActivate: (id: string) => Promise<void>
+  onContextMenu: (event: React.MouseEvent, saved: SavedConnection) => void
+}) {
+  const handleActivate = useCallback(async () => {
+    if (activating) return
+    await onActivate(saved.id)
+  }, [activating, onActivate, saved.id])
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#1b2735] bg-[#0d1117] shadow-[0_4px_16px_rgba(0,0,0,0.18)]">
+      <div className="flex items-center gap-1.5 bg-[#111820] px-2 py-1.5">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[#0f141b]"
+          disabled={activating}
+          onClick={handleActivate}
+          onContextMenu={event => onContextMenu(event, saved)}
+        >
+          <span className="relative inline-flex h-4 w-4 flex-shrink-0 items-center justify-center text-slate-500">
+            <IconDatabase tone="#79bbff" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-200">
+            {activating ? 'Connecting...' : saved.label}
+          </span>
+          <span className="flex-shrink-0 text-slate-600">
+            <IconChevron open={false} />
+          </span>
+        </button>
+      </div>
+    </section>
+  )
+})
+
 export default function ExplorerSidebar() {
   const connections = useAppStore(s => s.connections)
   const savedConnections = useAppStore(s => s.savedConnections)
   const restoreSavedConnections = useAppStore(s => s.restoreSavedConnections)
   const openEditConnectionModal = useAppStore(s => s.openEditConnectionModal)
+  const openEditSavedConnectionModal = useAppStore(s => s.openEditSavedConnectionModal)
+  const deleteSavedConnection = useAppStore(s => s.deleteSavedConnection)
   const openCreateTable = useAppStore(s => s.openCreateTable)
   const openEditTable = useAppStore(s => s.openEditTable)
   const deleteTable = useAppStore(s => s.deleteTable)
+  const activateSavedConnection = useAppStore(s => s.activateSavedConnection)
+  const activeSavedConnectionId = connections[0]?.config ? getSavedConnectionId(connections[0].config) : null
+  const hasActiveSavedEntry = activeSavedConnectionId
+    ? savedConnections.some(saved => saved.id === activeSavedConnectionId)
+    : false
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; connectionId: string; connection: Connection; includeAddTable?: boolean } | null>(null)
+  const [savedContextMenu, setSavedContextMenu] = useState<{ x: number; y: number; saved: SavedConnection } | null>(null)
   const [databaseContextMenu, setDatabaseContextMenu] = useState<{ x: number; y: number; connection: Connection; databaseName?: string; schemaName?: string } | null>(null)
   const [tableContextMenu, setTableContextMenu] = useState<{ x: number; y: number; connection: Connection; tableName: string; databaseName?: string; schemaName?: string; itemType: 'table' | 'view' } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ connection: Connection; tableName: string; databaseName?: string; schemaName?: string; itemType: 'table' | 'view' } | null>(null)
+  const [activatingSavedId, setActivatingSavedId] = useState<string | null>(null)
 
   useEffect(() => {
     void restoreSavedConnections()
@@ -342,6 +395,7 @@ export default function ExplorerSidebar() {
   useEffect(() => {
     const closeMenu = () => {
       setContextMenu(null)
+      setSavedContextMenu(null)
       setDatabaseContextMenu(null)
       setTableContextMenu(null)
       setDeleteTarget(null)
@@ -349,6 +403,7 @@ export default function ExplorerSidebar() {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setContextMenu(null)
+        setSavedContextMenu(null)
         setDatabaseContextMenu(null)
         setTableContextMenu(null)
         setDeleteTarget(null)
@@ -369,8 +424,21 @@ export default function ExplorerSidebar() {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
   }, [])
 
+  const handleActivateSaved = useCallback(async (id: string) => {
+    setActivatingSavedId(id)
+    try {
+      const connection = await activateSavedConnection(id)
+      if (connection) {
+        setExpanded({ [connection.id]: true })
+      }
+    } finally {
+      setActivatingSavedId(null)
+    }
+  }, [activateSavedConnection])
+
   const handleConnectionContextMenu = useCallback((event: React.MouseEvent, payload: { connectionId: string; connection: Connection; includeAddTable?: boolean }) => {
     event.preventDefault()
+    setSavedContextMenu(null)
     setDatabaseContextMenu(null)
     setTableContextMenu(null)
     setContextMenu({
@@ -380,10 +448,24 @@ export default function ExplorerSidebar() {
     })
   }, [])
 
+  const handleSavedConnectionContextMenu = useCallback((event: React.MouseEvent, saved: SavedConnection) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setContextMenu(null)
+    setDatabaseContextMenu(null)
+    setTableContextMenu(null)
+    setSavedContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 196),
+      y: Math.min(event.clientY, window.innerHeight - 128),
+      saved,
+    })
+  }, [])
+
   const handleDatabaseContextMenu = useCallback((event: React.MouseEvent, payload: { connection: Connection; databaseName?: string; schemaName?: string }) => {
     event.preventDefault()
     event.stopPropagation()
     setContextMenu(null)
+    setSavedContextMenu(null)
     setTableContextMenu(null)
     setDatabaseContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 196),
@@ -396,6 +478,7 @@ export default function ExplorerSidebar() {
     event.preventDefault()
     event.stopPropagation()
     setContextMenu(null)
+    setSavedContextMenu(null)
     setDatabaseContextMenu(null)
     setTableContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 196),
@@ -416,9 +499,9 @@ export default function ExplorerSidebar() {
         </div>
       </div>
 
-      {/* Connection list */}
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
-        {connections.length === 0 ? (
+      <div className="flex-1 overflow-y-auto px-3 py-3">
+        <div className="space-y-2">
+        {savedConnections.length === 0 && connections.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#1e2d40] bg-[#0d1117] px-5 py-8 text-center">
             <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#131a24] text-[#4a9edd]">
               <IconDatabase tone="#4a9edd" />
@@ -427,19 +510,87 @@ export default function ExplorerSidebar() {
             <div className="mt-1.5 text-xs leading-5 text-slate-500">Create a new connection to start exploring your databases.</div>
           </div>
         ) : (
-          connections.map(connection => (
-            <ConnectionItem
-              key={connection.id}
-              connection={connection}
-              expanded={!!expanded[connection.id]}
-              onToggle={handleToggle}
-              onConnectionContextMenu={handleConnectionContextMenu}
-              onDatabaseContextMenu={handleDatabaseContextMenu}
-              onTableContextMenu={handleTableContextMenu}
-            />
-          ))
+          savedConnections.map(saved => {
+            const activeConnection = activeSavedConnectionId === saved.id ? connections[0] : null
+            return activeConnection ? (
+              <ConnectionItem
+                key={saved.id}
+                connection={activeConnection}
+                expanded={!!expanded[activeConnection.id]}
+                onToggle={handleToggle}
+                onConnectionContextMenu={handleConnectionContextMenu}
+                onDatabaseContextMenu={handleDatabaseContextMenu}
+                onTableContextMenu={handleTableContextMenu}
+              />
+            ) : (
+              <SavedConnectionItem
+                key={saved.id}
+                saved={saved}
+                activating={activatingSavedId === saved.id}
+                onActivate={handleActivateSaved}
+                onContextMenu={handleSavedConnectionContextMenu}
+              />
+            )
+          })
         )}
+        {savedConnections.length === 0 && connections.map(connection => (
+          <ConnectionItem
+            key={connection.id}
+            connection={connection}
+            expanded={!!expanded[connection.id]}
+            onToggle={handleToggle}
+            onConnectionContextMenu={handleConnectionContextMenu}
+            onDatabaseContextMenu={handleDatabaseContextMenu}
+            onTableContextMenu={handleTableContextMenu}
+          />
+        ))}
+        {savedConnections.length > 0 && connections[0] && !hasActiveSavedEntry && !activatingSavedId && (
+          <ConnectionItem
+            key={connections[0].id}
+            connection={connections[0]}
+            expanded={!!expanded[connections[0].id]}
+            onToggle={handleToggle}
+            onConnectionContextMenu={handleConnectionContextMenu}
+            onDatabaseContextMenu={handleDatabaseContextMenu}
+            onTableContextMenu={handleTableContextMenu}
+          />
+        )}
+        </div>
       </div>
+
+      {/* Context menu — Saved connection */}
+      {savedContextMenu && (
+        <div
+          className="fixed z-[1200] min-w-[180px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
+          style={{ left: savedContextMenu.x, top: savedContextMenu.y }}
+          onClick={event => event.stopPropagation()}
+          onContextMenu={event => event.preventDefault()}
+        >
+          <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+            Saved Tab
+          </div>
+          <button
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
+            onClick={() => {
+              openEditSavedConnectionModal(savedContextMenu.saved.id)
+              setSavedContextMenu(null)
+            }}
+          >
+            <IconEdit />
+            <span>Edit</span>
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-300 transition hover:bg-[#2a1820] hover:text-rose-200"
+            onClick={() => {
+              deleteSavedConnection(savedContextMenu.saved.id)
+              setSavedContextMenu(null)
+            }}
+          >
+            <IconTrash />
+            <span>Delete</span>
+          </button>
+        </div>
+      )}
 
       {/* Context menu — Connection */}
       {contextMenu && (
