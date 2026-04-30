@@ -15,17 +15,28 @@ function loadLegacySavedConnections(): SavedConnection[] {
   return loadSaved()
 }
 
-function getSavedConnectionId(config: ConnectionConfig): string {
-  return `${config.dbType}:${config.host}:${config.port}:${config.database}:${config.username}`
+function createSavedConnectionId(): string {
+  return `saved_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
-function upsertSaved(list: SavedConnection[], config: ConnectionConfig, label: string): SavedConnection[] {
-  const fingerprint = getSavedConnectionId(config)
-  const existing = list.find(s => s.id === fingerprint)
-  const entry: SavedConnection = { id: fingerprint, label, config, lastUsed: Date.now() }
-  const next = existing
-    ? list.map(s => s.id === fingerprint ? entry : s)
-    : [entry, ...list]
+function saveConnectionEntry(
+  list: SavedConnection[],
+  config: ConnectionConfig,
+  label: string,
+  replaceId?: string,
+): SavedConnection[] {
+  const now = Date.now()
+  const entry: SavedConnection = {
+    id: replaceId || createSavedConnectionId(),
+    label,
+    config,
+    lastUsed: now,
+  }
+
+  const withoutPrevious = replaceId
+    ? list.filter(item => item.id !== replaceId)
+    : list
+  const next = [entry, ...withoutPrevious]
   return next.slice(0, 20) // keep max 20
 }
 
@@ -58,7 +69,7 @@ interface AppActions {
   openDatabase:    () => Promise<Connection | null>
   createDatabase:  () => Promise<Connection | null>
   openDemo:        () => Promise<Connection | null>
-  connectRemote:   (config: ConnectionConfig) => Promise<Connection | null>
+  connectRemote:   (config: ConnectionConfig, options?: { save?: boolean }) => Promise<Connection | null>
   activateSavedConnection: (id: string) => Promise<Connection | null>
   restoreSavedConnections: () => Promise<void>
   openEditConnectionModal: (connectionId: string) => void
@@ -232,7 +243,7 @@ const useAppStore = create<AppStore>((set, get) => ({
     return get()._addConnection(conn)
   },
 
-  connectRemote: async (config) => {
+  connectRemote: async (config, options = {}) => {
     const openConnectionIds = get().connections.map(connection => connection.id)
     if (openConnectionIds.length > 0) {
       await Promise.all(openConnectionIds.map(id => api.closeDatabase(id)))
@@ -242,11 +253,13 @@ const useAppStore = create<AppStore>((set, get) => ({
     const conn = await api.connectRemote(config)
     const result = await get()._addConnection(conn)
     if (result) {
+      if (options.save === false) return result
+
       const editingId = get().editingConnectionId
-      const savedSource = editingId?.startsWith('saved:')
-        ? get().savedConnections.filter(item => item.id !== editingId.slice('saved:'.length))
-        : get().savedConnections
-      const next = upsertSaved(savedSource, config, result.name)
+      const replaceSavedId = editingId?.startsWith('saved:')
+        ? editingId.slice('saved:'.length)
+        : undefined
+      const next = saveConnectionEntry(get().savedConnections, config, result.name, replaceSavedId)
       const persistResult = await api.setSavedConnections(get().authToken, next)
       if (persistResult.error) {
         set({ status: { message: persistResult.error, error: true } })
@@ -258,7 +271,7 @@ const useAppStore = create<AppStore>((set, get) => ({
           savedConnections: next,
           hasLoadedSavedConnections: true,
           connections: state.connections.map(connection => (
-            connection.id === result.id ? { ...connection, config } : connection
+            connection.id === result.id ? { ...connection, config, savedConnectionId: next[0]?.id } : connection
           )),
         }))
       }
@@ -273,7 +286,15 @@ const useAppStore = create<AppStore>((set, get) => ({
       return null
     }
 
-    return get().connectRemote(saved.config)
+    const result = await get().connectRemote(saved.config, { save: false })
+    if (result) {
+      set(state => ({
+        connections: state.connections.map(connection => (
+          connection.id === result.id ? { ...connection, savedConnectionId: id } : connection
+        )),
+      }))
+    }
+    return result
   },
 
   restoreSavedConnections: async () => {
@@ -287,7 +308,7 @@ const useAppStore = create<AppStore>((set, get) => ({
     if (!connection?.config) return
     set({
       showConnectModal: true,
-      editingConnectionId: connectionId,
+      editingConnectionId: connection.savedConnectionId ? `saved:${connection.savedConnectionId}` : connectionId,
       editingConnectionConfig: connection.config,
     })
   },

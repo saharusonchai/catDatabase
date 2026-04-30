@@ -3,8 +3,10 @@ const fs = require('fs')
 const path = require('path')
 const net  = require('net')
 const crypto = require('crypto')
+const os = require('os')
 
 const isDev = process.env.NODE_ENV !== 'production'
+const appIconPath = path.join(__dirname, '..', 'build', 'icons', 'icon.png')
 
 // ── Lazy-load drivers (avoid crash if native module missing) ──────────────────
 let Database, mysql, pgLib, mongoLib, ssh2Lib
@@ -71,6 +73,22 @@ function writeSavedConnectionsFile(list) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, JSON.stringify(Array.isArray(list) ? list : [], null, 2), 'utf8')
   return true
+}
+
+function toPortableHomePath(filePath) {
+  const homeDir = os.homedir()
+  if (!homeDir || !filePath) return filePath
+
+  const relativePath = path.relative(homeDir, filePath)
+  if (
+    relativePath === '' ||
+    relativePath.startsWith('..') ||
+    path.isAbsolute(relativePath)
+  ) {
+    return filePath
+  }
+
+  return `~/${relativePath.split(path.sep).join('/')}`
 }
 
 function assertSessionUser(token) {
@@ -361,6 +379,331 @@ function quotePgIdentifier(value) {
   return `"${String(value).replace(/"/g, '""')}"`
 }
 
+function quoteMysqlIdentifier(value) {
+  return `\`${String(value).replace(/`/g, '``')}\``
+}
+
+function normalizeIpcValue(value) {
+  if (value == null) return value
+  if (typeof value === 'bigint') return value.toString()
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value
+  if (value instanceof Date) return value.toISOString()
+  if (Buffer.isBuffer(value)) return value.toString('utf8')
+  if (Array.isArray(value)) return value.map(normalizeIpcValue)
+  if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString('utf8')
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entryValue]) => [key, normalizeIpcValue(entryValue)])
+    )
+  }
+  return String(value)
+}
+
+function normalizeIpcRow(row) {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key, normalizeIpcValue(value)])
+  )
+}
+
+function safeExportName(value) {
+  return String(value || 'export')
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 120) || 'export'
+}
+
+function getScopedTableName(table) {
+  return table.schema ? `${table.schema}.${table.name}` : table.name
+}
+
+async function collectExportRows(adapter, tableName, dbName) {
+  const pageSize = 1000
+  let page = 0
+  let total = null
+  const rows = []
+
+  while (total == null || rows.length < total) {
+    const result = await adapter.getTableData(tableName, page, pageSize, dbName)
+    if (result?.error) throw new Error(result.error)
+    total = Number(result.total || 0)
+    rows.push(...(result.rows || []).map(row => {
+      const { __rowid__, ...data } = row
+      return data
+    }))
+    if (!result.rows?.length) break
+    page += 1
+  }
+
+  return rows
+}
+
+async function collectExportTables(adapter, scope) {
+  if (scope.type === 'table') {
+    return [{
+      name: scope.tableName,
+      schema: scope.schemaName,
+      type: scope.itemType || 'table',
+    }]
+  }
+
+  if (typeof adapter.listTablesForDatabase === 'function') {
+    return await adapter.listTablesForDatabase(scope.databaseName)
+  }
+
+  return await adapter.listTables()
+}
+
+function buildSchemaExport(payload) {
+  return {
+    exportedAt: new Date().toISOString(),
+    format: payload.mode,
+    connection: payload.connection,
+    scope: payload.scope,
+    tables: payload.tables,
+  }
+}
+
+function buildAiExportMarkdown(payload) {
+  const lines = [
+    `# Database Structure: ${payload.scope.databaseName || payload.connection.name}`,
+    '',
+    `- Connection: ${payload.connection.name}`,
+    `- Type: ${payload.connection.dbType || 'database'}`,
+    `- Scope: ${payload.scope.type === 'database' ? 'database' : 'table'}`,
+    `- Exported: ${new Date().toISOString()}`,
+    '',
+    'Use this schema context to understand table names, columns, primary keys, nullability, defaults, and available SQL definitions.',
+    '',
+  ]
+
+  for (const table of payload.tables) {
+    lines.push(`## ${table.schema ? `${table.schema}.` : ''}${table.name}`)
+    lines.push('')
+    if (table.type) lines.push(`- Type: ${table.type}`)
+    if (Number.isFinite(table.totalRows)) lines.push(`- Rows: ${table.totalRows}`)
+    lines.push('')
+    lines.push('| Column | Type | PK | Nullable | Default | Comment |')
+    lines.push('| --- | --- | --- | --- | --- | --- |')
+    for (const column of table.structure.columns || []) {
+      lines.push(`| ${column.name ?? ''} | ${column.type ?? ''} | ${column.pk ? 'yes' : ''} | ${column.notnull ? 'no' : 'yes'} | ${column.dflt_value ?? ''} | ${column.comment ?? ''} |`)
+    }
+    if (table.structure.sql) {
+      lines.push('')
+      lines.push('```sql')
+      lines.push(String(table.structure.sql))
+      lines.push('```')
+    }
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
+async function exportConnectionScope(conn, request) {
+  const scope = request?.scope || {}
+  const mode = request?.mode || 'schema'
+  const adapter = conn.adapter
+  const tables = await collectExportTables(adapter, scope)
+  const exportedTables = []
+
+  for (const table of tables) {
+    const tableName = getScopedTableName(table)
+    const structure = await adapter.getTableStructure(tableName, scope.databaseName)
+    if (structure?.error) throw new Error(structure.error)
+
+    const exportedTable = {
+      name: table.name,
+      schema: table.schema,
+      type: table.type,
+      structure,
+    }
+
+    if (mode === 'data') {
+      exportedTable.rows = await collectExportRows(adapter, tableName, scope.databaseName)
+      exportedTable.totalRows = exportedTable.rows.length
+    } else if (mode === 'ai') {
+      const sample = await adapter.getTableData(tableName, 0, 1, scope.databaseName).catch(() => null)
+      exportedTable.totalRows = sample?.total == null ? undefined : Number(sample.total)
+    }
+
+    exportedTables.push(exportedTable)
+  }
+
+  const exportPayload = buildSchemaExport({
+    mode,
+    connection: {
+      name: conn.name,
+      dbType: conn.dbType,
+      filePath: conn.filePath,
+    },
+    scope,
+    tables: exportedTables,
+  })
+
+  const isAi = mode === 'ai'
+  const content = isAi
+    ? buildAiExportMarkdown(exportPayload)
+    : JSON.stringify(exportPayload, null, 2)
+  const extension = isAi ? 'md' : 'json'
+  const defaultName = `${safeExportName(scope.databaseName || scope.tableName || conn.name)}-${mode}.${extension}`
+
+  const result = await dialog.showSaveDialog({
+    title: 'Export Database',
+    defaultPath: defaultName,
+    filters: isAi
+      ? [{ name: 'Markdown', extensions: ['md'] }]
+      : [{ name: 'JSON', extensions: ['json'] }],
+  })
+
+  if (result.canceled || !result.filePath) return { canceled: true }
+  fs.writeFileSync(result.filePath, content, 'utf8')
+  return {
+    success: true,
+    filePath: result.filePath,
+    tableCount: exportedTables.length,
+    rowCount: exportedTables.reduce((sum, table) => sum + (table.rows?.length || 0), 0),
+  }
+}
+
+function buildColumnDefinition(dbType, column) {
+  const quote = dbType === 'mysql'
+    ? quoteMysqlIdentifier
+    : dbType === 'postgresql'
+      ? quotePgIdentifier
+      : quoteSqliteIdentifier
+  const name = quote(column.name)
+  const type = String(column.type || 'TEXT').trim() || 'TEXT'
+  const parts = [name, type]
+  if (column.notnull) parts.push('NOT NULL')
+  if (column.pk) parts.push('PRIMARY KEY')
+  return parts.join(' ')
+}
+
+function buildCreateColumnsSql(dbType, structure) {
+  const columns = Array.isArray(structure?.columns) ? structure.columns : []
+  if (!columns.length) throw new Error('Import file does not include table columns')
+  return columns.map(column => buildColumnDefinition(dbType, column)).join(', ')
+}
+
+async function tableExists(adapter, scope, table) {
+  const tables = typeof adapter.listTablesForDatabase === 'function'
+    ? await adapter.listTablesForDatabase(scope.databaseName)
+    : await adapter.listTables()
+  return Array.isArray(tables) && tables.some(item => (
+    item.name === table.name &&
+    (!table.schema || !item.schema || item.schema === table.schema)
+  ))
+}
+
+function getImportTableName(conn, table, scope) {
+  if (scope.type === 'table') {
+    if (conn.dbType === 'postgresql' && scope.schemaName) return `${scope.schemaName}.${scope.tableName}`
+    return scope.tableName
+  }
+  if (conn.dbType === 'postgresql' && table.schema) return `${table.schema}.${table.name}`
+  return table.name
+}
+
+async function createImportTableIfNeeded(conn, scope, table) {
+  if (conn.dbType === 'mongodb') return false
+  if (await tableExists(conn.adapter, scope, table)) return false
+  if (typeof conn.adapter.createTable !== 'function') {
+    throw new Error('Create table is not supported for this connection')
+  }
+
+  const columnsSql = buildCreateColumnsSql(conn.dbType, table.structure)
+  const tableName = scope.type === 'table' ? scope.tableName : table.name
+  const schemaName = conn.dbType === 'postgresql'
+    ? (scope.schemaName || table.schema || 'public')
+    : undefined
+  const result = await conn.adapter.createTable(tableName, columnsSql, scope.databaseName, schemaName)
+  if (result?.error) throw new Error(result.error)
+  return true
+}
+
+async function importRows(conn, scope, table) {
+  const rows = Array.isArray(table.rows) ? table.rows : []
+  const tableName = getImportTableName(conn, table, scope)
+  let inserted = 0
+  let failed = 0
+  let firstError = null
+
+  for (const row of rows) {
+    const result = await conn.adapter.insertRow(tableName, row, scope.databaseName)
+    if (result?.error) {
+      failed += 1
+      firstError = firstError || result.error
+    } else {
+      inserted += 1
+    }
+  }
+
+  return { inserted, failed, firstError }
+}
+
+function selectImportTables(payload, scope) {
+  const tables = Array.isArray(payload?.tables) ? payload.tables : []
+  if (!tables.length) throw new Error('Import file does not include tables')
+  if (scope.type !== 'table') return tables
+
+  if (tables.length === 1) {
+    return [{
+      ...tables[0],
+      name: scope.tableName,
+      schema: scope.schemaName || tables[0].schema,
+    }]
+  }
+
+  const matched = tables.find(table => table.name === scope.tableName && (!scope.schemaName || table.schema === scope.schemaName))
+  if (!matched) throw new Error(`Import file does not include table ${scope.tableName}`)
+  return [matched]
+}
+
+async function importConnectionScope(conn, request) {
+  const scope = request?.scope || {}
+  const mode = request?.mode || 'schema-data'
+  const result = await dialog.showOpenDialog({
+    title: 'Import Table',
+    filters: [{ name: 'CatDB JSON Export', extensions: ['json'] }],
+    properties: ['openFile'],
+  })
+
+  if (result.canceled || !result.filePaths.length) return { canceled: true }
+
+  const raw = fs.readFileSync(result.filePaths[0], 'utf8')
+  const payload = JSON.parse(raw)
+  const tables = selectImportTables(payload, scope)
+  let created = 0
+  let inserted = 0
+  let failed = 0
+  let firstError = null
+
+  for (const table of tables) {
+    if (mode === 'schema' || mode === 'schema-data') {
+      const didCreate = await createImportTableIfNeeded(conn, scope, table)
+      if (didCreate) created += 1
+    }
+
+    if (mode === 'data' || mode === 'schema-data') {
+      const rowResult = await importRows(conn, scope, table)
+      inserted += rowResult.inserted
+      failed += rowResult.failed
+      firstError = firstError || rowResult.firstError
+    }
+  }
+
+  return {
+    success: true,
+    filePath: result.filePaths[0],
+    tableCount: tables.length,
+    created,
+    inserted,
+    failed,
+    warning: firstError ? `Some rows failed. First error: ${firstError}` : undefined,
+  }
+}
+
 function replacePgQualifiedName(definition, schema, currentTable, targetTable) {
   const quotedCurrent = `${quotePgIdentifier(schema)}.${quotePgIdentifier(currentTable)}`
   const quotedTarget = `${quotePgIdentifier(schema)}.${quotePgIdentifier(targetTable)}`
@@ -381,6 +724,10 @@ function normalizeTableFilterClause(filter) {
     throw new Error('Filter must be a single WHERE expression')
   }
   return clause
+}
+
+function normalizeSortDirection(direction) {
+  return String(direction || '').toLowerCase() === 'desc' ? 'DESC' : 'ASC'
 }
 
 // connections: Map<id, { adapter, name, dbType, filePath?, sshCleanup? }>
@@ -455,8 +802,7 @@ function createSSHTunnel(sshCfg, targetHost, targetPort, options = {}) {
       keepaliveCountMax: options.keepAlive ? 3 : undefined,
     }
     if (sshCfg.privateKey) {
-      const fs = require('fs')
-      const keyPath = sshCfg.privateKey.replace(/^~/, require('os').homedir())
+      const keyPath = sshCfg.privateKey.replace(/^~/, os.homedir())
       sshConnCfg.privateKey = fs.readFileSync(keyPath)
     } else {
       sshConnCfg.password = sshCfg.password
@@ -477,12 +823,13 @@ class SQLiteAdapter {
     `).all()
   }
 
-  getTableData(table, page, limit, _dbName, filter) {
+  getTableData(table, page, limit, _dbName, filter, sortColumn, sortDirection) {
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
     const clause = normalizeTableFilterClause(filter)
     const where = clause ? ` WHERE ${clause}` : ''
-    const rows = this.db.prepare(`SELECT rowid as __rowid__, * FROM "${table}"${where} LIMIT ? OFFSET ?`).all(lim, off)
+    const order = sortColumn ? ` ORDER BY ${quoteSqliteIdentifier(sortColumn)} ${normalizeSortDirection(sortDirection)}` : ''
+    const rows = this.db.prepare(`SELECT rowid as __rowid__, * FROM "${table}"${where}${order} LIMIT ? OFFSET ?`).all(lim, off)
     const { cnt } = this.db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"${where}`).get()
     return { rows, total: cnt, page: page || 0, limit: lim }
   }
@@ -608,7 +955,7 @@ class MySQLAdapter {
 
   _tbl(table, dbName) {
     const db = dbName || this.database
-    return db ? `\`${db}\`.\`${table}\`` : `\`${table}\``
+    return db ? `${quoteMysqlIdentifier(db)}.${quoteMysqlIdentifier(table)}` : quoteMysqlIdentifier(table)
   }
 
   async _getPk(table, dbName) {
@@ -653,16 +1000,17 @@ class MySQLAdapter {
     return rows
   }
 
-  async getTableData(table, page, limit, dbName, filter) {
+  async getTableData(table, page, limit, dbName, filter, sortColumn, sortDirection) {
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
     const pk  = await this._getPk(table, dbName)
     const ref = this._tbl(table, dbName)
     const clause = normalizeTableFilterClause(filter)
     const where = clause ? ` WHERE ${clause}` : ''
-    const [rows] = await this.conn.execute(`SELECT * FROM ${ref}${where} LIMIT ? OFFSET ?`, [lim, off])
+    const order = sortColumn ? ` ORDER BY ${quoteMysqlIdentifier(sortColumn)} ${normalizeSortDirection(sortDirection)}` : ''
+    const [rows] = await this.conn.execute(`SELECT * FROM ${ref}${where}${order} LIMIT ? OFFSET ?`, [lim, off])
     const [[{ cnt }]] = await this.conn.execute(`SELECT COUNT(*) as cnt FROM ${ref}${where}`)
-    const out = rows.map(r => ({ __rowid__: pk ? r[pk] : null, ...r }))
+    const out = rows.map(r => normalizeIpcRow({ __rowid__: pk ? r[pk] : null, ...r }))
     return { rows: out, total: Number(cnt), page: page || 0, limit: lim }
   }
 
@@ -690,7 +1038,7 @@ class MySQLAdapter {
       }
       if (isSelect) {
         const [rows] = await this.conn.execute(sql)
-        return { rows: rows.map(r => ({ ...r })), elapsed: Date.now() - start, type: 'select' }
+        return { rows: rows.map(r => normalizeIpcRow(r)), elapsed: Date.now() - start, type: 'select' }
       }
       const [result] = await this.conn.execute(sql)
       return { changes: result.affectedRows || 0, elapsed: Date.now() - start, type: 'exec' }
@@ -774,7 +1122,7 @@ class PostgreSQLAdapter {
 
   _tbl(table) {
     const parsed = this._parseTable(table)
-    return `"${parsed.schema}"."${parsed.table}"`
+    return `${quotePgIdentifier(parsed.schema)}.${quotePgIdentifier(parsed.table)}`
   }
 
   async _withClient(dbName, fn) {
@@ -850,17 +1198,18 @@ class PostgreSQLAdapter {
     return this.listTablesForDatabase(this.currentDatabase)
   }
 
-  async getTableData(table, page, limit, dbName, filter) {
+  async getTableData(table, page, limit, dbName, filter, sortColumn, sortDirection) {
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
     const pk  = await this._getPk(table, dbName)
     const ref = this._tbl(table)
     const clause = normalizeTableFilterClause(filter)
     const where = clause ? ` WHERE ${clause}` : ''
+    const order = sortColumn ? ` ORDER BY ${quotePgIdentifier(sortColumn)} ${normalizeSortDirection(sortDirection)} NULLS LAST` : ''
     return this._withClient(dbName, async client => {
-      const { rows } = await client.query(`SELECT * FROM ${ref}${where} LIMIT $1 OFFSET $2`, [lim, off])
+      const { rows } = await client.query(`SELECT * FROM ${ref}${where}${order} LIMIT $1 OFFSET $2`, [lim, off])
       const { rows: [{ cnt }] } = await client.query(`SELECT COUNT(*) as cnt FROM ${ref}${where}`)
-      const out = rows.map(r => ({ __rowid__: pk ? r[pk] : null, ...r }))
+      const out = rows.map(r => normalizeIpcRow({ __rowid__: pk ? r[pk] : null, ...r }))
       return { rows: out, total: parseInt(cnt), page: page || 0, limit: lim }
     })
   }
@@ -893,7 +1242,7 @@ class PostgreSQLAdapter {
       return await this._withClient(dbName, async client => {
         const { rows, rowCount } = await client.query(sql)
         if (rows.length > 0 || /^(SELECT|WITH|EXPLAIN)\b/i.test(sql.trim())) {
-          return { rows, elapsed: Date.now() - start, type: 'select' }
+          return { rows: rows.map(r => normalizeIpcRow(r)), elapsed: Date.now() - start, type: 'select' }
         }
         return { changes: rowCount || 0, elapsed: Date.now() - start, type: 'exec' }
       })
@@ -1114,15 +1463,17 @@ class MongoDBAdapter {
     return colls.map(c => ({ name: c.name, type: 'table' }))
   }
 
-  async getTableData(table, page, limit, _dbName, filter) {
+  async getTableData(table, page, limit, _dbName, filter, sortColumn, sortDirection) {
     if (String(filter || '').trim()) {
       return { error: 'Advanced SQL filter is not supported for MongoDB collections yet' }
     }
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
+    const cursor = this.db.collection(table).find({}).skip(off).limit(lim)
+    if (sortColumn) cursor.sort({ [sortColumn]: normalizeSortDirection(sortDirection) === 'DESC' ? -1 : 1 })
     const coll = this.db.collection(table)
     const [docs, total] = await Promise.all([
-      coll.find({}).skip(off).limit(lim).toArray(),
+      cursor.toArray(),
       coll.countDocuments(),
     ])
     const rows = docs.map(doc => {
@@ -1286,6 +1637,7 @@ function createDemoDatabase() {
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 900, minHeight: 600,
+    icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false, contextIsolation: true,
@@ -1332,6 +1684,19 @@ ipcMain.handle('db:create-file', async () => {
   })
   if (r.canceled || !r.filePath) return null
   return openSQLiteFile(r.filePath)
+})
+
+ipcMain.handle('app:select-ssh-private-key', async () => {
+  const r = await dialog.showOpenDialog({
+    title: 'Select SSH Private Key',
+    filters: [
+      { name: 'Private Keys', extensions: ['pem', 'key', 'ppk'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+    properties: ['openFile'],
+  })
+  if (r.canceled || !r.filePaths.length) return null
+  return toPortableHomePath(r.filePaths[0])
 })
 
 ipcMain.handle('db:get-demo', () => {
@@ -1426,10 +1791,10 @@ ipcMain.handle('db:list-tables-for-db', async (_, id, dbName) => {
   try { return await conn.adapter.listTablesForDatabase(dbName) } catch (e) { return { error: e.message } }
 })
 
-ipcMain.handle('db:table-data', async (_, id, table, page, limit, dbName, filter) => {
+ipcMain.handle('db:table-data', async (_, id, table, page, limit, dbName, filter, sortColumn, sortDirection) => {
   const conn = connections.get(id)
   if (!conn) return { error: 'Connection not found' }
-  try { return await conn.adapter.getTableData(table, page, limit, dbName, filter) } catch (e) { return { error: e.message } }
+  try { return await conn.adapter.getTableData(table, page, limit, dbName, filter, sortColumn, sortDirection) } catch (e) { return { error: e.message } }
 })
 
 ipcMain.handle('db:table-structure', async (_, id, table, dbName) => {
@@ -1469,6 +1834,18 @@ ipcMain.handle('db:delete-table', async (_, id, table, dbName, schemaName, itemT
   if (!conn) return { error: 'Connection not found' }
   if (typeof conn.adapter.deleteTable !== 'function') return { error: 'Delete table is not supported for this connection yet' }
   try { return await conn.adapter.deleteTable(table, dbName, schemaName, itemType) } catch (e) { return { error: e.message } }
+})
+
+ipcMain.handle('db:export-scope', async (_, id, request) => {
+  const conn = connections.get(id)
+  if (!conn) return { error: 'Connection not found' }
+  try { return await exportConnectionScope(conn, request) } catch (e) { return { error: e.message } }
+})
+
+ipcMain.handle('db:import-scope', async (_, id, request) => {
+  const conn = connections.get(id)
+  if (!conn) return { error: 'Connection not found' }
+  try { return await importConnectionScope(conn, request) } catch (e) { return { error: e.message } }
 })
 
 ipcMain.handle('db:update-row', async (_, id, table, rowid, data, dbName) => {
@@ -1575,6 +1952,9 @@ ipcMain.handle('auth:logout', async (_, token) => {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(appIconPath)
+  }
   createWindow()
   globalShortcut.register('F12', () => {
     const win = BrowserWindow.getFocusedWindow()

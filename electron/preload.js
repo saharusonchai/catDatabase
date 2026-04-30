@@ -12,8 +12,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createTable:     (id, table, columnsSql, db, schema, comments) => ipcRenderer.invoke('db:create-table', id, table, columnsSql, db, schema, comments),
   updateTableSchema: (id, table, nextTable, columnsSql, db, schema, comments) => ipcRenderer.invoke('db:update-table-schema', id, table, nextTable, columnsSql, db, schema, comments),
   deleteTable:     (id, table, db, schema, itemType) => ipcRenderer.invoke('db:delete-table', id, table, db, schema, itemType),
+  exportScope:     (id, request)                    => ipcRenderer.invoke('db:export-scope', id, request),
+  importScope:     (id, request)                    => ipcRenderer.invoke('db:import-scope', id, request),
   getSavedConnections: (token)                     => ipcRenderer.invoke('app:get-saved-connections', token),
   setSavedConnections: (token, list)               => ipcRenderer.invoke('app:set-saved-connections', token, list),
+  selectSshPrivateKey: ()                          => ipcRenderer.invoke('app:select-ssh-private-key'),
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   register:        (payload)                       => ipcRenderer.invoke('auth:register', payload),
@@ -27,7 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listDatabases:      (id)                         => ipcRenderer.invoke('db:list-databases', id),
   listTablesForDb:    (id, dbName)                 => ipcRenderer.invoke('db:list-tables-for-db', id, dbName),
   getTableStructure:  (id, table, db)              => ipcRenderer.invoke('db:table-structure', id, table, db),
-  getTableData:       (id, table, page, limit, db, filter) => ipcRenderer.invoke('db:table-data', id, table, page, limit, db, filter),
+  getTableData:       (id, table, page, limit, db, filter, sortColumn, sortDirection) => ipcRenderer.invoke('db:table-data', id, table, page, limit, db, filter, sortColumn, sortDirection),
   insertRow:          (id, table, data, db)        => ipcRenderer.invoke('db:insert-row', id, table, data, db),
   updateRow:          (id, table, rowid, data, db) => ipcRenderer.invoke('db:update-row', id, table, rowid, data, db),
   deleteRow:          (id, table, rowid, db)       => ipcRenderer.invoke('db:delete-row', id, table, rowid, db),

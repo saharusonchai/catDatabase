@@ -50,6 +50,7 @@ export interface Connection {
   filePath: string
   dbType?: DbType
   config?: ConnectionConfig
+  savedConnectionId?: string
   /** SQLite: flat table list. Remote: null (use databases instead) */
   tables: TableItem[]
   /** MySQL / PG / Mongo: database/schema list with lazy-loaded tables */
@@ -192,6 +193,41 @@ export interface PersistResult {
   error?: string
 }
 
+export interface ExportScopeRequest {
+  mode: 'schema' | 'data' | 'ai'
+  scope:
+    | { type: 'database'; databaseName?: string; schemaName?: string }
+    | { type: 'table'; databaseName?: string; schemaName?: string; tableName: string; itemType?: 'table' | 'view' }
+}
+
+export interface ExportScopeResult {
+  success?: boolean
+  canceled?: boolean
+  filePath?: string
+  tableCount?: number
+  rowCount?: number
+  error?: string
+}
+
+export interface ImportScopeRequest {
+  mode: 'schema' | 'data' | 'schema-data'
+  scope:
+    | { type: 'database'; databaseName?: string; schemaName?: string }
+    | { type: 'table'; databaseName?: string; schemaName?: string; tableName: string; itemType?: 'table' | 'view' }
+}
+
+export interface ImportScopeResult {
+  success?: boolean
+  canceled?: boolean
+  filePath?: string
+  tableCount?: number
+  created?: number
+  inserted?: number
+  failed?: number
+  warning?: string
+  error?: string
+}
+
 export interface AuthUser {
   id: string
   username: string
@@ -224,8 +260,11 @@ export interface ElectronAPI {
   createTable:        (id: string, table: string, columnsSql: string, db?: string, schema?: string, comments?: Record<string, string>) => Promise<RowMutationResult>
   updateTableSchema:  (id: string, table: string, nextTable: string, columnsSql: string, db?: string, schema?: string, comments?: Record<string, string>) => Promise<RowMutationResult>
   deleteTable:        (id: string, table: string, db?: string, schema?: string, itemType?: 'table' | 'view') => Promise<RowMutationResult>
+  exportScope:        (id: string, request: ExportScopeRequest)   => Promise<ExportScopeResult>
+  importScope:        (id: string, request: ImportScopeRequest)   => Promise<ImportScopeResult>
   getSavedConnections: (token: string | null)                     => Promise<SavedConnection[] | { error: string }>
   setSavedConnections: (token: string | null, list: SavedConnection[]) => Promise<PersistResult>
+  selectSshPrivateKey: ()                                         => Promise<string | null>
   register:          (payload: AuthPayload)                       => Promise<AuthResult>
   login:             (payload: AuthPayload)                       => Promise<AuthResult>
   getCurrentUser:    (token: string | null)                       => Promise<AuthResult>
@@ -234,10 +273,10 @@ export interface ElectronAPI {
   listDatabases:      (id: string)                               => Promise<DatabaseNode[] | { error: string }>
   listTablesForDb:    (id: string, dbName: string)               => Promise<TableItem[] | { error: string }>
   getTableStructure:  (id: string, table: string, db?: string)   => Promise<TableStructure | { error: string }>
-  getTableData:       (id: string, table: string, page: number, limit: number, db?: string, filter?: string) => Promise<TableDataResult>
+  getTableData:       (id: string, table: string, page: number, limit: number, db?: string, filter?: string, sortColumn?: string, sortDirection?: 'asc' | 'desc') => Promise<TableDataResult>
   insertRow:          (id: string, table: string, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
-  updateRow:          (id: string, table: string, rowid: number, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
-  deleteRow:          (id: string, table: string, rowid: number, db?: string) => Promise<RowMutationResult>
+  updateRow:          (id: string, table: string, rowid: number | string, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
+  deleteRow:          (id: string, table: string, rowid: number | string, db?: string) => Promise<RowMutationResult>
   runQuery:           (id: string, sql: string, db?: string)     => Promise<QueryResult>
 }
 

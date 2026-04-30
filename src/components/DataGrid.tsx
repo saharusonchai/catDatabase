@@ -358,6 +358,26 @@ type ModalState =
   | { type: 'delete' }
   | null
 
+type RowId = number | string
+
+function compareDbValues(left: DbRow[string], right: DbRow[string], direction: 'asc' | 'desc') {
+  if (left == null && right == null) return 0
+  if (left == null) return direction === 'asc' ? 1 : -1
+  if (right == null) return direction === 'asc' ? -1 : 1
+
+  const leftNumber = typeof left === 'number' ? left : Number(left)
+  const rightNumber = typeof right === 'number' ? right : Number(right)
+  if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) {
+    return direction === 'asc' ? leftNumber - rightNumber : rightNumber - leftNumber
+  }
+
+  const result = stringifyDbValue(left).localeCompare(stringifyDbValue(right), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
+  return direction === 'asc' ? result : -result
+}
+
 // Delete Confirm
 function DeleteConfirm({ count, onConfirm, onClose }: { count: number; onConfirm: () => void; onClose: () => void }) {
   return (
@@ -414,13 +434,13 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
   const [limit, setLimit]                   = useState(100)
   const [loading, setLoading]               = useState(false)
   const [error, setError]                   = useState<string | null>(null)
-  const [selectedRowids, setSelectedRowids] = useState<Set<number>>(new Set())
+  const [selectedRowids, setSelectedRowids] = useState<Set<RowId>>(new Set())
   const [sortCol, setSortCol]               = useState<string | null>(null)
   const [sortDir, setSortDir]               = useState<'asc' | 'desc'>('asc')
   const [modal, setModal]                   = useState<ModalState>(null)
   const [filter, setFilter]                 = useState('')
   const [columnWidths, setColumnWidths]     = useState<Record<string, number>>({})
-  const [editingRowId, setEditingRowId]     = useState<number | null>(null)
+  const [editingRowId, setEditingRowId]     = useState<RowId | null>(null)
   const [editingDraft, setEditingDraft]     = useState<Record<string, string>>({})
   const [savingEdit, setSavingEdit]         = useState(false)
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
@@ -432,14 +452,29 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
 
   const builderSql = useMemo(() => buildFilterSql(filterClauses), [filterClauses])
 
-  const loadData = useCallback(async (pg = 0, nextFilter = appliedFilter, nextLimit = limit) => {
+  const loadData = useCallback((
+    pg = 0,
+    nextFilter = appliedFilter,
+    nextLimit = limit,
+    nextSortCol = sortCol,
+    nextSortDir = sortDir,
+  ) => async () => {
     setLoading(true)
     setError(null)
     setSelectedRowids(new Set())
     setEditingRowId(null)
     setEditingDraft({})
     const trimmedFilter = nextFilter.trim()
-    const result = await api.getTableData(connectionId, tableName, pg, nextLimit, database, trimmedFilter || undefined)
+    const result = await api.getTableData(
+      connectionId,
+      tableName,
+      pg,
+      nextLimit,
+      database,
+      trimmedFilter || undefined,
+      nextSortCol || undefined,
+      nextSortCol ? nextSortDir : undefined,
+    )
     if (result.error) { setError(result.error); setLoading(false); return }
     setRows(result.rows)
     setTotal(result.total)
@@ -452,7 +487,7 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     }
     onStatusChange?.({ message: `${database ? `${database}.` : ''}${tableName} - ${result.total} rows`, rows: result.total })
     setLoading(false)
-  }, [appliedFilter, connectionId, tableName, limit, database, onStatusChange])
+  }, [appliedFilter, connectionId, tableName, limit, database, onStatusChange, sortCol, sortDir])
 
   useEffect(() => {
     setPage(0)
@@ -463,7 +498,7 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     setFilterClauses([createFilterClause()])
     setFilterMode('builder')
     setFilterPanelOpen(false)
-    void loadData(0, '')
+    void loadData(0, '')()
   }, [connectionId, tableName, database])
 
   useEffect(() => {
@@ -515,17 +550,10 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
       r = r.filter(row => Object.values(row).some(v => v != null && String(v).toLowerCase().includes(q)))
     }
     if (sortCol) {
-      r = [...r].sort((a, b) => {
-        const av = a[sortCol], bv = b[sortCol]
-        if (av == null && bv == null) return 0
-        if (av == null) return sortDir === 'asc' ? 1 : -1
-        if (bv == null) return sortDir === 'asc' ? -1 : 1
-        if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av
-        return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
-      })
+      r = [...r].sort((a, b) => compareDbValues(a[sortCol], b[sortCol], sortDir))
     }
     return r
-  }, [rows, sortCol, sortDir, filter])
+  }, [rows, filter, sortCol, sortDir])
 
   const visibleRows = useMemo(() => {
     if (editingRowId !== NEW_ROW_ID) return displayRows
@@ -534,11 +562,11 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
   }, [displayRows, editingRowId, columns, editingDraft])
 
   const handleSort = useCallback((col: string) => {
-    setSortCol(prev => {
-      if (prev === col) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return col }
-      setSortDir('asc'); return col
-    })
-  }, [])
+    const nextDir = sortCol === col && sortDir === 'asc' ? 'desc' : 'asc'
+    setSortCol(col)
+    setSortDir(nextDir)
+    void loadData(0, appliedFilter, limit, col, nextDir)()
+  }, [appliedFilter, limit, loadData, sortCol, sortDir])
 
   const handleResizeStart = useCallback((col: string, event: React.MouseEvent) => {
     event.preventDefault()
@@ -549,7 +577,8 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     document.body.style.userSelect = 'none'
   }, [columnWidths])
 
-  const handleRowClick = useCallback((rowid: number, e: React.MouseEvent) => {
+  const handleRowClick = useCallback((rowid: RowId | null | undefined, e: React.MouseEvent) => {
+    if (rowid == null) return
     setSelectedRowids(prev => {
       const next = new Set(prev)
       if (e.ctrlKey || e.metaKey) {
@@ -562,7 +591,8 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
   }, [])
 
   const startInlineEdit = useCallback((row: DbRow) => {
-    const rowid = row.__rowid__ as number
+    const rowid = row.__rowid__ as RowId | null | undefined
+    if (rowid == null) return
     setSelectedRowids(new Set([rowid]))
     setEditingRowId(rowid)
     setEditingDraft(
@@ -597,7 +627,7 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
       return
     }
     cancelInlineEdit()
-    loadData(page)
+    void loadData(page)()
   }, [editingRowId, editingDraft, connectionId, tableName, database, cancelInlineEdit, loadData, page])
 
   const handleDelete = useCallback(async () => {
@@ -611,7 +641,7 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     }
     setSelectedRowids(new Set())
     setModal(null)
-    loadData(page)
+    void loadData(page)()
   }, [connectionId, tableName, database, selectedRowids, page, loadData, cancelInlineEdit])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -623,14 +653,14 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     const nextFilter = filterMode === 'builder' ? builderSql.trim() : filterSqlDraft.trim()
     setAppliedFilter(nextFilter)
     setFilterPanelOpen(true)
-    await loadData(0, nextFilter)
+    await loadData(0, nextFilter)()
   }, [filterMode, builderSql, filterSqlDraft, loadData])
 
   const handleClearFilter = useCallback(async () => {
     setAppliedFilter('')
     setFilterSqlDraft('')
     setFilterClauses([createFilterClause(columns[0] ?? '')])
-    await loadData(0, '')
+    await loadData(0, '')()
   }, [columns, loadData])
 
   useEffect(() => {
@@ -705,11 +735,11 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
       canPrev: page > 0,
       canNext: page < totalPages - 1,
       actions: footerActions,
-      onPrev: () => { void loadData(page - 1) },
-      onNext: () => { void loadData(page + 1) },
+      onPrev: () => { void loadData(page - 1)() },
+      onNext: () => { void loadData(page + 1)() },
       onLimitChange: (nextLimit: number) => {
         setLimit(nextLimit)
-        void loadData(0, appliedFilter, nextLimit)
+        void loadData(0, appliedFilter, nextLimit)()
       },
     })
 
@@ -739,7 +769,7 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, width: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
       {/* Toolbar */}
       <div className="toolbar" style={{ flexShrink: 0 }}>
-        <button className="btn btn-ghost" onClick={() => loadData(page)}><MdRefresh />  Refresh</button>
+        <button className="btn btn-ghost" onClick={() => void loadData(page)()}><MdRefresh />  Refresh</button>
         <div className="toolbar-sep" />
         <button
           className="btn btn-ghost"
@@ -959,8 +989,9 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
               </thead>
               <tbody>
                 {visibleRows.map((row, i) => {
-                  const rowid = row.__rowid__ as number
-                  const isEditing = editingRowId === rowid
+                  const rowid = row.__rowid__ as RowId | null | undefined
+                  const canEditRow = rowid != null
+                  const isEditing = editingRowId != null && canEditRow && editingRowId === rowid
                   return (
                     <tr key={rowid ?? i} className={selectedRowids.has(rowid) ? 'selected' : ''}
                       onClick={e => handleRowClick(rowid, e)}

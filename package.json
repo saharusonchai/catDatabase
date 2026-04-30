@@ -53,8 +53,15 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "build/icons/**/*"
     ],
+    "win": {
+      "icon": "build/icons/icon.ico"
+    },
+    "mac": {
+      "icon": "build/icons/icon.icns"
+    },
     "extraResources": [
       "node_modules/better-sqlite3/**/*"
     ]

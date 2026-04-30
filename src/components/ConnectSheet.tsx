@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { FiFolder } from 'react-icons/fi'
 import useAppStore from '../store/appStore'
 import type { DbType, ConnectionConfig, SshConfig } from '../types'
 
@@ -97,6 +98,86 @@ function Field({
         onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
         onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
       />
+    </div>
+  )
+}
+
+function PrivateKeyField({
+  value,
+  onChange,
+  onBrowse,
+  disabled,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onBrowse: () => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span style={{ color: 'var(--text-secondary)', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          Private Key Path
+        </span>
+        <span style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>Optional</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 40px', gap: 8 }}>
+        <input
+          type="text"
+          value={value}
+          onChange={event => onChange(event.target.value)}
+          placeholder="~/.ssh/id_rsa"
+          autoComplete="off"
+          style={{
+            height: 38,
+            minWidth: 0,
+            borderRadius: 10,
+            border: '1px solid var(--border)',
+            background: 'var(--bg-input)',
+            padding: '0 12px',
+            fontSize: 13,
+            color: 'var(--text-primary)',
+            outline: 'none',
+            transition: 'border-color 0.15s',
+            fontFamily: "'JetBrains Mono', monospace",
+          }}
+          onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+          onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+        />
+        <button
+          type="button"
+          onClick={onBrowse}
+          disabled={disabled}
+          title="Browse private key file"
+          aria-label="Browse private key file"
+          style={{
+            height: 38,
+            width: 40,
+            borderRadius: 10,
+            border: '1px solid var(--border)',
+            background: 'var(--bg-input)',
+            color: disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.55 : 1,
+            transition: 'color 0.14s, border-color 0.14s, background 0.14s',
+          }}
+          onMouseEnter={e => {
+            if (!disabled) {
+              e.currentTarget.style.color = 'var(--text-primary)'
+              e.currentTarget.style.borderColor = 'var(--accent)'
+            }
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = disabled ? 'var(--text-muted)' : 'var(--text-secondary)'
+            e.currentTarget.style.borderColor = 'var(--border)'
+          }}
+        >
+          <FiFolder size={16} />
+        </button>
+      </div>
     </div>
   )
 }
@@ -272,6 +353,13 @@ export default function ConnectSheet() {
     }
     setTesting(false)
   }, [buildConfig])
+
+  const handleBrowsePrivateKey = useCallback(async () => {
+    const filePath = await api.selectSshPrivateKey()
+    if (!filePath) return
+    setSshKey(filePath)
+    setTestResult(null)
+  }, [])
 
   const handleConnect = useCallback(async () => {
     setConnecting(true)
@@ -498,7 +586,12 @@ export default function ConnectSheet() {
                   <Field label="SSH Username" value={sshUser} onChange={setSshUser} placeholder="ubuntu" />
                   <Field label="SSH Password" value={sshPassword} onChange={setSshPassword} placeholder="Optional" type="password" />
                 </div>
-                <Field label="Private Key Path" value={sshKey} onChange={setSshKey} placeholder="~/.ssh/id_rsa" />
+                <PrivateKeyField
+                  value={sshKey}
+                  onChange={value => { setSshKey(value); setTestResult(null) }}
+                  onBrowse={handleBrowsePrivateKey}
+                  disabled={busy}
+                />
               </div>
             )}
           </div>

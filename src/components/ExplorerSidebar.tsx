@@ -1,6 +1,8 @@
 import { useState, useCallback, memo, useEffect } from 'react'
 import useAppStore from '../store/appStore'
-import type { Connection, DatabaseNode, SavedConnection } from '../types'
+import type { Connection, ConnectionConfig, DatabaseNode, ExportScopeRequest, ImportScopeRequest, SavedConnection } from '../types'
+
+const api = window.electronAPI
 
 const IconDatabase = ({ tone = 'currentColor' }: { tone?: string }) => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={tone} strokeWidth="1.2">
@@ -64,8 +66,31 @@ const IconTrash = () => (
   </svg>
 )
 
-const getSavedConnectionId = (config: SavedConnection['config']) =>
-  `${config.dbType}:${config.host}:${config.port}:${config.database}:${config.username}`
+const IconExport = () => (
+  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 1.5v6" />
+    <path d="M3.8 3.7 6 1.5l2.2 2.2" />
+    <path d="M2 7.5v2.2c0 .5.3.8.8.8h6.4c.5 0 .8-.3.8-.8V7.5" />
+  </svg>
+)
+
+const IconImport = () => (
+  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 1.5v6" />
+    <path d="M3.8 5.3 6 7.5l2.2-2.2" />
+    <path d="M2 7.5v2.2c0 .5.3.8.8.8h6.4c.5 0 .8-.3.8-.8V7.5" />
+  </svg>
+)
+
+const sameConnectionConfig = (left?: ConnectionConfig, right?: ConnectionConfig) => {
+  if (!left || !right) return false
+  return left.dbType === right.dbType &&
+    left.host === right.host &&
+    left.port === right.port &&
+    left.database === right.database &&
+    left.username === right.username &&
+    left.name === right.name
+}
 
 function DeleteTableConfirm({
   tableName,
@@ -376,7 +401,12 @@ export default function ExplorerSidebar() {
   const openEditTable = useAppStore(s => s.openEditTable)
   const deleteTable = useAppStore(s => s.deleteTable)
   const activateSavedConnection = useAppStore(s => s.activateSavedConnection)
-  const activeSavedConnectionId = connections[0]?.config ? getSavedConnectionId(connections[0].config) : null
+  const refreshConnectionTables = useAppStore(s => s.refreshConnectionTables)
+  const setStatus = useAppStore(s => s.setStatus)
+  const activeConnection = connections[0] ?? null
+  const activeSavedConnectionId = activeConnection?.savedConnectionId
+    ?? savedConnections.find(saved => sameConnectionConfig(saved.config, activeConnection?.config))?.id
+    ?? null
   const hasActiveSavedEntry = activeSavedConnectionId
     ? savedConnections.some(saved => saved.id === activeSavedConnectionId)
     : false
@@ -387,6 +417,7 @@ export default function ExplorerSidebar() {
   const [tableContextMenu, setTableContextMenu] = useState<{ x: number; y: number; connection: Connection; tableName: string; databaseName?: string; schemaName?: string; itemType: 'table' | 'view' } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ connection: Connection; tableName: string; databaseName?: string; schemaName?: string; itemType: 'table' | 'view' } | null>(null)
   const [activatingSavedId, setActivatingSavedId] = useState<string | null>(null)
+  const [expandedTransferMenu, setExpandedTransferMenu] = useState<'export' | 'import' | null>(null)
 
   useEffect(() => {
     void restoreSavedConnections()
@@ -399,6 +430,7 @@ export default function ExplorerSidebar() {
       setDatabaseContextMenu(null)
       setTableContextMenu(null)
       setDeleteTarget(null)
+      setExpandedTransferMenu(null)
     }
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -407,6 +439,7 @@ export default function ExplorerSidebar() {
         setDatabaseContextMenu(null)
         setTableContextMenu(null)
         setDeleteTarget(null)
+        setExpandedTransferMenu(null)
       }
     }
 
@@ -441,6 +474,7 @@ export default function ExplorerSidebar() {
     setSavedContextMenu(null)
     setDatabaseContextMenu(null)
     setTableContextMenu(null)
+    setExpandedTransferMenu(null)
     setContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 196),
       y: Math.min(event.clientY, window.innerHeight - 120),
@@ -454,6 +488,7 @@ export default function ExplorerSidebar() {
     setContextMenu(null)
     setDatabaseContextMenu(null)
     setTableContextMenu(null)
+    setExpandedTransferMenu(null)
     setSavedContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 196),
       y: Math.min(event.clientY, window.innerHeight - 128),
@@ -467,9 +502,10 @@ export default function ExplorerSidebar() {
     setContextMenu(null)
     setSavedContextMenu(null)
     setTableContextMenu(null)
+    setExpandedTransferMenu(null)
     setDatabaseContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 196),
-      y: Math.min(event.clientY, window.innerHeight - 88),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 344)),
       ...payload,
     })
   }, [])
@@ -480,12 +516,131 @@ export default function ExplorerSidebar() {
     setContextMenu(null)
     setSavedContextMenu(null)
     setDatabaseContextMenu(null)
+    setExpandedTransferMenu(null)
     setTableContextMenu({
       x: Math.min(event.clientX, window.innerWidth - 196),
-      y: Math.min(event.clientY, window.innerHeight - 128),
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 384)),
       ...payload,
     })
   }, [])
+
+  const handleExportScope = useCallback(async (connection: Connection, request: ExportScopeRequest) => {
+    setDatabaseContextMenu(null)
+    setTableContextMenu(null)
+    setExpandedTransferMenu(null)
+    setStatus({ message: 'Preparing export...' })
+    const result = await api.exportScope(connection.id, request)
+    if (result.canceled) {
+      setStatus({ message: 'Export canceled' })
+      return
+    }
+    if (result.error) {
+      setStatus({ message: result.error, error: true })
+      return
+    }
+    const detail = request.mode === 'data'
+      ? ` (${result.tableCount ?? 0} table${result.tableCount === 1 ? '' : 's'}, ${result.rowCount ?? 0} rows)`
+      : ` (${result.tableCount ?? 0} table${result.tableCount === 1 ? '' : 's'})`
+    setStatus({ message: `Exported${detail}: ${result.filePath}` })
+  }, [setStatus])
+
+  const handleImportScope = useCallback(async (connection: Connection, request: ImportScopeRequest) => {
+    setDatabaseContextMenu(null)
+    setTableContextMenu(null)
+    setExpandedTransferMenu(null)
+    setStatus({ message: 'Preparing import...' })
+    const result = await api.importScope(connection.id, request)
+    if (result.canceled) {
+      setStatus({ message: 'Import canceled' })
+      return
+    }
+    if (result.error) {
+      setStatus({ message: result.error, error: true })
+      return
+    }
+    await refreshConnectionTables(connection.id, request.scope.databaseName)
+    const detail = ` (${result.tableCount ?? 0} table${result.tableCount === 1 ? '' : 's'}, ${result.created ?? 0} created, ${result.inserted ?? 0} rows inserted`
+    const failures = result.failed ? `, ${result.failed} failed` : ''
+    setStatus({
+      message: `Imported${detail}${failures}): ${result.filePath}${result.warning ? ` - ${result.warning}` : ''}`,
+      error: Boolean(result.failed),
+    })
+  }, [refreshConnectionTables, setStatus])
+
+  const renderTransferButtons = (
+    connection: Connection,
+    scope: ExportScopeRequest['scope'] & ImportScopeRequest['scope'],
+  ) => (
+    <>
+      <div className="mt-1 border-t border-[#1b2735] pt-1" />
+      <button
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
+        onClick={() => setExpandedTransferMenu(current => current === 'export' ? null : 'export')}
+      >
+        <IconExport />
+        <span className="flex-1">Export</span>
+        <span className="text-slate-500"><IconChevron open={expandedTransferMenu === 'export'} /></span>
+      </button>
+      {expandedTransferMenu === 'export' && (
+        <div className="mb-1 ml-5 space-y-0.5 border-l border-[#203044] pl-2">
+          <button
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
+            onClick={() => void handleExportScope(connection, { mode: 'schema', scope })}
+          >
+            <IconExport />
+            <span>Schema Only</span>
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
+            onClick={() => void handleExportScope(connection, { mode: 'data', scope })}
+          >
+            <IconExport />
+            <span>Schema + Data</span>
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
+            onClick={() => void handleExportScope(connection, { mode: 'ai', scope })}
+          >
+            <IconExport />
+            <span>AI Context</span>
+          </button>
+        </div>
+      )}
+      <button
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
+        onClick={() => setExpandedTransferMenu(current => current === 'import' ? null : 'import')}
+      >
+        <IconImport />
+        <span className="flex-1">Import</span>
+        <span className="text-slate-500"><IconChevron open={expandedTransferMenu === 'import'} /></span>
+      </button>
+      {expandedTransferMenu === 'import' && (
+        <div className="ml-5 space-y-0.5 border-l border-[#203044] pl-2">
+          <button
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
+            onClick={() => void handleImportScope(connection, { mode: 'schema', scope })}
+          >
+            <IconImport />
+            <span>Schema Only</span>
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
+            onClick={() => void handleImportScope(connection, { mode: 'data', scope })}
+          >
+            <IconImport />
+            <span>Data Only</span>
+          </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
+            onClick={() => void handleImportScope(connection, { mode: 'schema-data', scope })}
+          >
+            <IconImport />
+            <span>Schema + Data</span>
+          </button>
+        </div>
+      )}
+    </>
+  )
 
   return (
     <aside className="flex w-[270px] min-w-[270px] flex-col overflow-hidden border-r border-[#1b2735] bg-[#0f141b]">
@@ -511,12 +666,12 @@ export default function ExplorerSidebar() {
           </div>
         ) : (
           savedConnections.map(saved => {
-            const activeConnection = activeSavedConnectionId === saved.id ? connections[0] : null
-            return activeConnection ? (
+            const activeSavedConnection = activeSavedConnectionId === saved.id ? activeConnection : null
+            return activeSavedConnection ? (
               <ConnectionItem
                 key={saved.id}
-                connection={activeConnection}
-                expanded={!!expanded[activeConnection.id]}
+                connection={activeSavedConnection}
+                expanded={!!expanded[activeSavedConnection.id]}
                 onToggle={handleToggle}
                 onConnectionContextMenu={handleConnectionContextMenu}
                 onDatabaseContextMenu={handleDatabaseContextMenu}
@@ -561,7 +716,7 @@ export default function ExplorerSidebar() {
       {/* Context menu — Saved connection */}
       {savedContextMenu && (
         <div
-          className="fixed z-[1200] min-w-[180px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
+          className="fixed z-[1200] min-w-[210px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
           style={{ left: savedContextMenu.x, top: savedContextMenu.y }}
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
@@ -649,13 +804,18 @@ export default function ExplorerSidebar() {
             <IconPlus />
             <span>Add Table</span>
           </button>
+          {renderTransferButtons(databaseContextMenu.connection, {
+            type: 'database',
+            databaseName: databaseContextMenu.databaseName,
+            schemaName: databaseContextMenu.schemaName,
+          })}
         </div>
       )}
 
       {/* Context menu — Table */}
       {tableContextMenu && (
         <div
-          className="fixed z-[1200] min-w-[180px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
+          className="fixed z-[1200] min-w-[210px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
           style={{ left: tableContextMenu.x, top: tableContextMenu.y }}
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
@@ -689,6 +849,13 @@ export default function ExplorerSidebar() {
             <IconTrash />
             <span>{tableContextMenu.itemType === 'view' ? 'Delete View' : 'Delete Table'}</span>
           </button>
+          {renderTransferButtons(tableContextMenu.connection, {
+            type: 'table',
+            databaseName: tableContextMenu.databaseName,
+            schemaName: tableContextMenu.schemaName,
+            tableName: tableContextMenu.tableName,
+            itemType: tableContextMenu.itemType,
+          })}
         </div>
       )}
 
