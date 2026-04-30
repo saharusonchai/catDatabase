@@ -11,7 +11,7 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
-    "better-sqlite3": "^9.4.3",
+    "better-sqlite3": "^12.9.0",
     "mongodb": "^7.1.1",
     "mysql2": "^3.21.0",
     "pg": "^8.20.0",
@@ -22,6 +22,7 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",

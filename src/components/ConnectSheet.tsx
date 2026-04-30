@@ -5,36 +5,50 @@ import type { DbType, ConnectionConfig, SshConfig } from '../types'
 const api = window.electronAPI
 
 const IconMysql = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2.5 11.5c2.2-3.7 4.85-5.55 8-5.55 1.25 0 2.25.4 3 .95-.35.2-.88.72-1.05 1.25.95.15 1.85.72 2.05 1.4-.7.1-1.5.55-1.95 1.15.55.15 1.25.65 1.4 1.25-1.1.45-2.75.25-4-.3-.7.95-1.75 1.55-3.15 1.8-1.3.2-2.75-.05-4.3-.75Z" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3C7 3 3 5.5 3 9c0 2 1.5 3.8 4 5v5l3-2 3 2V14c2.5-1.2 4-3 4-5 0-3.5-4-6-5-6z" />
+    <path d="M9 9h.01M15 9h.01" />
   </svg>
 )
 
 const IconPostgres = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5.3 4.4c0-1.55 1.2-2.7 2.75-2.7 1.9 0 3.75 1.3 3.75 4.3v4.7c0 1.75-.95 2.7-2.35 2.7-.7 0-1.25-.2-1.95-.55l-1.35.7" />
-    <path d="M5.15 8.35h3.1" />
-    <path d="M4.8 5.8c-.95.45-1.55 1.3-1.55 2.35 0 1.45 1.2 2.7 2.95 2.7.7 0 1.4-.2 2-.55" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
   </svg>
 )
 
 const IconMongo = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M8 1.6c1.85 2.15 2.8 4.15 2.8 6.1 0 2.65-1.3 4.8-2.8 6.7-1.5-1.9-2.8-4.05-2.8-6.7 0-1.95.95-3.95 2.8-6.1Z" />
-    <path d="M8 4.1v8.6" />
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2c3.5 4 5 7.5 5 10.5a5 5 0 0 1-10 0C7 9.5 8.5 6 12 2z" />
+    <path d="M12 6v13" />
   </svg>
 )
 
 const IconClose = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-    <path d="M2.2 2.2 9.8 9.8M9.8 2.2 2.2 9.8" />
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+    <path d="M2.5 2.5 11.5 11.5M11.5 2.5 2.5 11.5" />
   </svg>
 )
 
-const DB_TYPES: { value: DbType; label: string; icon: JSX.Element; defaultPort: number }[] = [
-  { value: 'mysql', label: 'MySQL', icon: <IconMysql />, defaultPort: 3306 },
-  { value: 'postgresql', label: 'PostgreSQL', icon: <IconPostgres />, defaultPort: 5432 },
-  { value: 'mongodb', label: 'MongoDB', icon: <IconMongo />, defaultPort: 27017 },
+const IconCheck = () => (
+  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.5 7l3.5 3.5 5.5-6" />
+  </svg>
+)
+
+const IconWarn = () => (
+  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 2.5 12.5 12H1.5L7 2.5z" />
+    <path d="M7 6v3M7 10.5v.5" />
+  </svg>
+)
+
+const DB_TYPES: { value: DbType; label: string; icon: JSX.Element; defaultPort: number; desc: string }[] = [
+  { value: 'mysql', label: 'MySQL', icon: <IconMysql />, defaultPort: 3306, desc: 'Port 3306' },
+  { value: 'postgresql', label: 'PostgreSQL', icon: <IconPostgres />, defaultPort: 5432, desc: 'Port 5432' },
+  { value: 'mongodb', label: 'MongoDB', icon: <IconMongo />, defaultPort: 27017, desc: 'Port 27017' },
 ]
 
 function Field({
@@ -43,25 +57,47 @@ function Field({
   onChange,
   placeholder,
   type = 'text',
+  hint,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   placeholder?: string
   type?: string
+  hint?: string
 }) {
   return (
-    <label className="flex flex-col gap-2">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-500">{label}</span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span style={{ color: 'var(--text-secondary)', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          {label}
+        </span>
+        {hint && (
+          <span style={{ color: 'var(--text-muted)', fontSize: 10.5 }}>{hint}</span>
+        )}
+      </div>
       <input
         type={type}
         value={value}
         onChange={event => onChange(event.target.value)}
         placeholder={placeholder}
         autoComplete="off"
-        className="h-11 rounded-2xl border border-stone-800 bg-stone-950 px-4 text-sm text-stone-100 outline-none transition focus:border-[#005FB8]"
+        style={{
+          height: 38,
+          borderRadius: 10,
+          border: '1px solid var(--border)',
+          background: 'var(--bg-input)',
+          padding: '0 12px',
+          fontSize: 13,
+          color: 'var(--text-primary)',
+          outline: 'none',
+          transition: 'border-color 0.15s',
+          fontFamily: "'JetBrains Mono', monospace",
+        }}
+        onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+        onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
       />
-    </label>
+    </div>
   )
 }
 
@@ -77,19 +113,66 @@ function Toggle({
   onChange: (checked: boolean) => void
 }) {
   return (
-    <label className="flex items-start gap-3 rounded-2xl border border-stone-800 bg-stone-950/70 px-4 py-4 text-sm text-stone-300">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={event => onChange(event.target.checked)}
-        className="mt-0.5 h-4 w-4 rounded border-stone-700 bg-stone-950 text-stone-200"
-      />
-      <span className="flex flex-col gap-1">
-        <span className="font-medium text-stone-100">{label}</span>
-        <span className="text-xs leading-5 text-stone-500">{copy}</span>
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 12,
+        width: '100%',
+        padding: '12px 14px',
+        borderRadius: 12,
+        border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+        background: checked ? 'rgba(0,95,184,0.08)' : 'var(--bg-input)',
+        cursor: 'pointer',
+        textAlign: 'left',
+        transition: 'border-color 0.15s, background 0.15s',
+      }}
+    >
+      <span
+        style={{
+          flexShrink: 0,
+          marginTop: 1,
+          width: 18,
+          height: 18,
+          borderRadius: 5,
+          border: `1.5px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+          background: checked ? 'var(--accent)' : 'transparent',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+          transition: 'all 0.15s',
+        }}
+      >
+        {checked && <IconCheck />}
       </span>
-    </label>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}</span>
+        <span style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>{copy}</span>
+      </span>
+    </button>
   )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: 10,
+      fontWeight: 700,
+      letterSpacing: '0.16em',
+      textTransform: 'uppercase',
+      color: 'var(--text-muted)',
+      paddingBottom: 4,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function Divider() {
+  return <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
 }
 
 export default function ConnectSheet() {
@@ -182,7 +265,7 @@ export default function ConnectSheet() {
     try {
       const result = await api.testConnection(buildConfig())
       setTestResult(result.ok
-        ? { ok: true, msg: `Connected successfully${result.latency != null ? ` (${result.latency}ms)` : ''}` }
+        ? { ok: true, msg: `Connected successfully${result.latency != null ? ` · ${result.latency}ms` : ''}` }
         : { ok: false, msg: result.error ?? 'Connection failed' })
     } catch (error: unknown) {
       setTestResult({ ok: false, msg: String(error) })
@@ -204,138 +287,287 @@ export default function ConnectSheet() {
   const busy = testing || connecting
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-6 backdrop-blur-md">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-[32px] border border-[#1b2735] bg-[#0f141b] shadow-[0_40px_120px_rgba(0,0,0,0.5)]">
-        <div className="border-b border-stone-800 px-8 py-7">
-          <div className="flex items-start justify-between gap-6">
-            <div className="flex items-start gap-4">
-              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#1f3c58] bg-[#0f2236] text-[#79bbff]">
-                {currentType.icon}
-              </span>
-              <div className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-500">Connection</div>
-                <h3 className="text-2xl font-semibold tracking-[-0.03em] text-stone-50">
-                  {editingConnectionId ? 'Edit connection' : 'Connect to a database'}
-                </h3>
-                <p className="max-w-xl text-sm leading-6 text-stone-500">
-                  {editingConnectionId
-                    ? 'Update the connection details, test them, then save the new session.'
-                    : 'A quieter workspace for creating and testing a connection without extra panels.'}
-                </p>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.72)',
+        padding: 24,
+        backdropFilter: 'blur(8px)',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 680,
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          borderRadius: 20,
+          border: '1px solid var(--border)',
+          background: 'var(--bg-panel)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '20px 24px',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              border: '1px solid var(--border)',
+              background: 'var(--bg-sidebar)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#79bbff',
+              flexShrink: 0,
+            }}>
+              {currentType.icon}
+            </span>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>
+                Database Connection
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                {editingConnectionId ? 'Edit Connection' : 'New Connection'}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={closeConnectModal}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-stone-800 bg-stone-950 text-stone-400 transition hover:border-stone-700 hover:text-stone-200"
-            >
-              <IconClose />
-            </button>
           </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-8 py-7">
-          <div className="grid gap-7">
-            <div className="grid grid-cols-3 gap-3">
-              {DB_TYPES.map(type => (
-                <button
-                  key={type.value}
-                  type="button"
-                  onClick={() => handleDbTypeChange(type.value)}
-                  className={`rounded-3xl border px-4 py-5 text-left transition ${
-                    dbType === type.value
-                      ? 'border-[#005FB8] bg-[#112031] text-stone-50'
-                      : 'border-stone-800 bg-[#151515] text-stone-400 hover:border-[#2d4f70] hover:text-stone-200'
-                  }`}
-                >
-                  <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-stone-800 bg-stone-950">
-                    {type.icon}
-                  </div>
-                  <div className="text-sm font-medium">{type.label}</div>
-                  <div className="mt-1 text-xs text-stone-500">Default port {type.defaultPort}</div>
-                </button>
-              ))}
-            </div>
-
-            <div className="grid gap-5 rounded-[28px] border border-[#1b2735] bg-[#121821] p-6">
-              <Field
-                label="Connection Name"
-                value={connName}
-                onChange={setConnName}
-                placeholder={`${currentType.label} - ${host || '127.0.0.1'}${database ? `/${database}` : ''}`}
-              />
-              <div className="grid grid-cols-[minmax(0,1fr),110px] gap-4">
-                <Field label="Host" value={host} onChange={setHost} placeholder="127.0.0.1" />
-                <Field label="Port" value={port} onChange={setPort} placeholder={String(currentType.defaultPort)} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Username" value={username} onChange={setUsername} placeholder="root" />
-                <Field label="Password" value={password} onChange={setPassword} placeholder="Optional" type="password" />
-              </div>
-              <Field
-                label={dbType === 'mongodb' ? 'Database / Auth DB' : 'Initial Database'}
-                value={database}
-                onChange={setDatabase}
-                placeholder={dbType === 'mongodb' ? 'admin' : 'Leave blank to browse all'}
-              />
-
-            </div>
-
-            <div className="grid gap-4 rounded-[28px] border border-[#1b2735] bg-[#121821] p-6">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-500">Options</div>
-
-              <Toggle
-                label="Keepalive interval"
-                copy="Enable driver keepalive with a 240 second interval."
-                checked={useKeepAlive}
-                onChange={checked => {
-                  setUseKeepAlive(checked)
-                  setTestResult(null)
-                }}
-              />
-
-              <Toggle
-                label="Use SSH tunnel"
-                copy="Open the database connection through a bastion or private host."
-                checked={useSsh}
-                onChange={checked => {
-                  setUseSsh(checked)
-                  setTestResult(null)
-                }}
-              />
-
-              {useSsh && (
-                <div className="grid gap-4 rounded-3xl border border-[#1b2735] bg-[#0b1118] p-4">
-                  <div className="grid grid-cols-[minmax(0,1fr),110px] gap-4">
-                    <Field label="SSH Host" value={sshHost} onChange={setSshHost} placeholder="bastion.example.com" />
-                    <Field label="SSH Port" value={sshPort} onChange={setSshPort} placeholder="22" />
-                  </div>
-                  <Field label="SSH Username" value={sshUser} onChange={setSshUser} placeholder="ubuntu" />
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="SSH Password" value={sshPassword} onChange={setSshPassword} placeholder="Optional" type="password" />
-                    <Field label="Private Key Path" value={sshKey} onChange={setSshKey} placeholder="~/.ssh/id_rsa" />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {testResult && (
-              <div className={`rounded-3xl border px-4 py-4 text-sm ${
-                testResult.ok
-                  ? 'border-[#214f7f] bg-[#10253b] text-[#b7daff]'
-                  : 'border-rose-950 bg-rose-950/40 text-rose-200'
-              }`}>
-                {testResult.msg}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 border-t border-stone-800 px-8 py-6">
           <button
             type="button"
             onClick={closeConnectModal}
-            className="rounded-2xl border border-stone-800 bg-stone-950 px-4 py-2.5 text-sm font-medium text-stone-300 transition hover:border-stone-700 hover:text-stone-100"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              background: 'var(--bg-sidebar)',
+              color: 'var(--text-muted)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'color 0.14s, border-color 0.14s',
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = 'var(--text-primary)'
+              e.currentTarget.style.borderColor = 'var(--border-light)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--text-muted)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+          >
+            <IconClose />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* DB Type Selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <SectionLabel>Database Engine</SectionLabel>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {DB_TYPES.map(type => {
+                const isActive = dbType === type.value
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => handleDbTypeChange(type.value)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '10px 14px',
+                      borderRadius: 12,
+                      border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                      background: isActive ? 'rgba(0,95,184,0.1)' : 'var(--bg-input)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.14s',
+                    }}
+                  >
+                    <span style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      border: `1px solid ${isActive ? 'rgba(0,95,184,0.3)' : 'var(--border)'}`,
+                      background: isActive ? 'rgba(0,95,184,0.12)' : 'var(--bg-sidebar)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: isActive ? '#79bbff' : 'var(--text-muted)',
+                      flexShrink: 0,
+                      transition: 'all 0.14s',
+                    }}>
+                      {type.icon}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                        {type.label}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{type.desc}</div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <Divider />
+
+          {/* Connection Details */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <SectionLabel>Connection Details</SectionLabel>
+            <Field
+              label="Connection Name"
+              value={connName}
+              onChange={setConnName}
+              placeholder={`${currentType.label} — ${host || '127.0.0.1'}${database ? `/${database}` : ''}`}
+              hint="Optional"
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 10 }}>
+              <Field label="Host" value={host} onChange={setHost} placeholder="127.0.0.1" />
+              <Field label="Port" value={port} onChange={setPort} placeholder={String(currentType.defaultPort)} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Field label="Username" value={username} onChange={setUsername} placeholder="root" />
+              <Field label="Password" value={password} onChange={setPassword} placeholder="Optional" type="password" />
+            </div>
+            <Field
+              label={dbType === 'mongodb' ? 'Database / Auth DB' : 'Initial Database'}
+              value={database}
+              onChange={setDatabase}
+              placeholder={dbType === 'mongodb' ? 'admin' : 'Leave blank to browse all'}
+              hint="Optional"
+            />
+          </div>
+
+          <Divider />
+
+          {/* Options */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <SectionLabel>Options</SectionLabel>
+            <Toggle
+              label="Keepalive Interval"
+              copy="Enable driver keepalive with a 240-second interval to prevent dropped connections."
+              checked={useKeepAlive}
+              onChange={checked => { setUseKeepAlive(checked); setTestResult(null) }}
+            />
+            <Toggle
+              label="SSH Tunnel"
+              copy="Route the database connection through a bastion or jump host."
+              checked={useSsh}
+              onChange={checked => { setUseSsh(checked); setTestResult(null) }}
+            />
+
+            {useSsh && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                padding: '14px 16px',
+                borderRadius: 12,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-app)',
+                marginTop: 4,
+              }}>
+                <SectionLabel>SSH Configuration</SectionLabel>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: 10 }}>
+                  <Field label="SSH Host" value={sshHost} onChange={setSshHost} placeholder="bastion.example.com" />
+                  <Field label="Port" value={sshPort} onChange={setSshPort} placeholder="22" />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <Field label="SSH Username" value={sshUser} onChange={setSshUser} placeholder="ubuntu" />
+                  <Field label="SSH Password" value={sshPassword} onChange={setSshPassword} placeholder="Optional" type="password" />
+                </div>
+                <Field label="Private Key Path" value={sshKey} onChange={setSshKey} placeholder="~/.ssh/id_rsa" />
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '14px 24px',
+          borderTop: '1px solid var(--border)',
+          flexShrink: 0,
+        }}>
+          {/* Test Result — always visible, left side */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {testResult && (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                padding: '6px 12px',
+                borderRadius: 8,
+                border: `1px solid ${testResult.ok ? 'rgba(90,182,114,0.28)' : 'rgba(232,98,90,0.28)'}`,
+                background: testResult.ok ? 'rgba(90,182,114,0.07)' : 'rgba(232,98,90,0.07)',
+                maxWidth: '100%',
+              }}>
+                <span style={{ flexShrink: 0, color: testResult.ok ? 'var(--green)' : 'var(--red)', lineHeight: 0 }}>
+                  {testResult.ok ? <IconCheck /> : <IconWarn />}
+                </span>
+                <span style={{
+                  fontSize: 12.5,
+                  color: testResult.ok ? 'var(--green)' : 'var(--red)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}>
+                  {testResult.msg}
+                </span>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={closeConnectModal}
+            style={{
+              height: 36,
+              padding: '0 16px',
+              borderRadius: 9,
+              border: '1px solid var(--border)',
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'color 0.14s, border-color 0.14s',
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.color = 'var(--text-primary)'
+              e.currentTarget.style.borderColor = 'var(--border-light)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = 'var(--text-secondary)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
           >
             Cancel
           </button>
@@ -343,18 +575,57 @@ export default function ConnectSheet() {
             type="button"
             onClick={handleTest}
             disabled={busy}
-            className="rounded-2xl border border-[#2a3f56] bg-[#121821] px-4 py-2.5 text-sm font-medium text-stone-200 transition hover:border-[#005FB8] disabled:cursor-not-allowed disabled:opacity-50"
+            style={{
+              height: 36,
+              padding: '0 16px',
+              borderRadius: 9,
+              border: '1px solid var(--border)',
+              background: 'var(--bg-sidebar)',
+              color: busy ? 'var(--text-muted)' : 'var(--text-secondary)',
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: busy ? 'not-allowed' : 'pointer',
+              opacity: busy ? 0.5 : 1,
+              transition: 'color 0.14s, border-color 0.14s',
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+            onMouseEnter={e => {
+              if (!busy) {
+                e.currentTarget.style.color = 'var(--text-primary)'
+                e.currentTarget.style.borderColor = 'var(--accent)'
+              }
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.color = busy ? 'var(--text-muted)' : 'var(--text-secondary)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
           >
-            {testing ? 'Testing...' : 'Test Connection'}
+            {testing ? 'Testing…' : 'Test Connection'}
           </button>
           <button
             type="button"
             onClick={handleConnect}
             disabled={busy}
-            className="rounded-2xl bg-[#005FB8] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0a6ccb] disabled:cursor-not-allowed disabled:opacity-50"
+            style={{
+              height: 36,
+              padding: '0 18px',
+              borderRadius: 9,
+              border: '1px solid var(--accent-dim)',
+              background: 'var(--accent)',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: busy ? 'not-allowed' : 'pointer',
+              opacity: busy ? 0.5 : 1,
+              transition: 'background 0.14s',
+              fontFamily: "'DM Sans', sans-serif",
+            }}
+            onMouseEnter={e => { if (!busy) e.currentTarget.style.background = '#0a6ccb' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent)' }}
           >
-            {connecting ? 'Saving...' : editingConnectionId ? 'Save Connection' : 'Connect'}
+            {connecting ? 'Saving…' : editingConnectionId ? 'Save Connection' : 'Connect'}
           </button>
+          </div>
         </div>
       </div>
     </div>

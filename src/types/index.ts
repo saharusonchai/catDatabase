@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 // ── Domain types ──────────────────────────────────────────────────────────────
 
 export type DbType = 'sqlite' | 'mysql' | 'postgresql' | 'mongodb'
@@ -79,17 +81,34 @@ export interface StatusInfo {
 export interface GridFooterState {
   visible: boolean
   summary: string
+  selectionLabel?: string
   pageLabel: string
   limit: number
   canPrev: boolean
   canNext: boolean
+  actions?: Array<{
+    key: string
+    label: string
+    icon?: ReactNode
+    variant?: 'ghost' | 'primary' | 'danger'
+    disabled?: boolean
+    onClick?: () => void
+  }>
   onPrev?: () => void
   onNext?: () => void
   onLimitChange?: (limit: number) => void
 }
 
-/** A row returned from SQLite — values can be string, number, or null */
-export type DbRow = Record<string, string | number | null>
+export type DbValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Record<string, unknown>
+  | unknown[]
+
+/** A row returned from the database grid */
+export type DbRow = Record<string, DbValue>
 
 // ── SQLite PRAGMA types ───────────────────────────────────────────────────────
 

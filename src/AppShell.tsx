@@ -430,22 +430,41 @@ function DataGridFooterBar() {
   if (!gridFooter?.visible) return null
 
   return (
-    <div className="flex h-9 items-center justify-end gap-2 border-t border-[#1b2735] bg-[#131a22] px-4 text-[11px] text-slate-400">
-      <span className="mr-1">{gridFooter.summary}</span>
-      <button className="btn btn-ghost" style={{ padding: '3px 8px' }} disabled={!gridFooter.canPrev} onClick={() => gridFooter.onPrev?.()}>
+    <div className="flex h-9 items-center gap-2 border-t border-[#1b2735] bg-[#131a22] px-4 text-[11px] text-slate-400">
+      <div className="flex items-center gap-2">
+        {gridFooter.selectionLabel && (
+          <span className="mr-1 text-slate-300">{gridFooter.selectionLabel}</span>
+        )}
+        {gridFooter.actions?.map(action => (
+          <button
+            key={action.key}
+            className={action.variant === 'primary' ? 'btn btn-primary' : action.variant === 'danger' ? 'btn btn-danger' : 'btn btn-ghost'}
+            style={{ padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            disabled={action.disabled}
+            onClick={() => action.onClick?.()}
+          >
+            {action.icon}
+            {action.label}
+          </button>
+        ))}
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <span className="mr-1">{gridFooter.summary}</span>
+        <button className="btn btn-ghost" style={{ padding: '3px 8px' }} disabled={!gridFooter.canPrev} onClick={() => gridFooter.onPrev?.()}>
         Prev
-      </button>
-      <span>{gridFooter.pageLabel}</span>
-      <button className="btn btn-ghost" style={{ padding: '3px 8px' }} disabled={!gridFooter.canNext} onClick={() => gridFooter.onNext?.()}>
+        </button>
+        <span>{gridFooter.pageLabel}</span>
+        <button className="btn btn-ghost" style={{ padding: '3px 8px' }} disabled={!gridFooter.canNext} onClick={() => gridFooter.onNext?.()}>
         Next
-      </button>
-      <select
-        value={gridFooter.limit}
-        onChange={event => gridFooter.onLimitChange?.(Number(event.target.value))}
-        style={{ background: '#0b1118', border: '1px solid #1b2735', color: '#8592a3', padding: '3px 4px', borderRadius: 4, fontSize: 11.5, outline: 'none' }}
-      >
-        {[50, 100, 250, 500, 1000].map(n => <option key={n} value={n}>{n} rows</option>)}
-      </select>
+        </button>
+        <select
+          value={gridFooter.limit}
+          onChange={event => gridFooter.onLimitChange?.(Number(event.target.value))}
+          style={{ background: '#0b1118', border: '1px solid #1b2735', color: '#8592a3', padding: '3px 4px', borderRadius: 4, fontSize: 11.5, outline: 'none' }}
+        >
+          {[50, 100, 250, 500, 1000].map(n => <option key={n} value={n}>{n} rows</option>)}
+        </select>
+      </div>
     </div>
   )
 }
@@ -463,9 +482,9 @@ export default function AppShell() {
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <MainContent />
           </div>
+          <DataGridFooterBar />
         </main>
       </div>
-      <DataGridFooterBar />
       <StatusBar />
       {showConnectModal && <ConnectModal />}
     </div>
