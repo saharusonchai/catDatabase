@@ -1641,11 +1641,13 @@ function createDemoDatabase() {
 // ── Window ────────────────────────────────────────────────────────────────────
 function createWindow() {
   Menu.setApplicationMenu(null)
+  const isMac = process.platform === 'darwin'
 
   const win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 900, minHeight: 600,
     icon: appIconPath,
-    frame: false,
+    frame: !isMac,
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : {}),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

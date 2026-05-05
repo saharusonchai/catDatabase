@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  platform: process.platform,
+
   // ── File-based SQLite ─────────────────────────────────────────────────────
   openDatabase:    ()                              => ipcRenderer.invoke('db:open-file'),
   createDatabase:  ()                              => ipcRenderer.invoke('db:create-file'),

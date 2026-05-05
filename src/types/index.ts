@@ -251,6 +251,7 @@ export interface AuthResult {
 // ── Electron API (window.electronAPI) ────────────────────────────────────────
 
 export interface ElectronAPI {
+  platform:           string
   openDatabase:       ()                                          => Promise<IpcConnectionResult | null>
   createDatabase:     ()                                          => Promise<IpcConnectionResult | null>
   closeDatabase:      (id: string)                               => Promise<boolean>

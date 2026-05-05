@@ -61,6 +61,7 @@ type Theme = 'light' | 'dark'
 
 function TitleBar() {
   const api = window.electronAPI
+  const isMac = api?.platform === 'darwin'
   const [maximized, setMaximized] = useState(false)
 
   useEffect(() => {
@@ -100,7 +101,16 @@ function TitleBar() {
         userSelect: 'none',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '0 14px', flex: 1, minWidth: 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 9,
+          padding: isMac ? '0 14px 0 84px' : '0 14px',
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
         <div
           style={{
             width: 20,
@@ -123,47 +133,49 @@ function TitleBar() {
         </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
-        <button
-          type="button"
-          title="Minimize"
-          onClick={() => api?.windowMinimize?.()}
-          style={btnStyle}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)'; e.currentTarget.style.color = 'var(--side-tx-1)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
-        >
-          <svg width="11" height="11" viewBox="0 0 11 11"><path d="M0 5.5h11" stroke="currentColor" strokeWidth="1.1" /></svg>
-        </button>
-        <button
-          type="button"
-          title={maximized ? 'Restore' : 'Maximize'}
-          onClick={() => api?.windowMaximizeToggle?.().then(setMaximized)}
-          style={btnStyle}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)'; e.currentTarget.style.color = 'var(--side-tx-1)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
-        >
-          {maximized ? (
-            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.1">
-              <rect x="2.5" y="0.5" width="8" height="8" />
-              <rect x="0.5" y="2.5" width="8" height="8" fill="var(--side-bg)" />
-            </svg>
-          ) : (
-            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.1">
-              <rect x="0.5" y="0.5" width="10" height="10" />
-            </svg>
-          )}
-        </button>
-        <button
-          type="button"
-          title="Close"
-          onClick={() => api?.windowClose?.()}
-          style={btnStyle}
-          onMouseEnter={e => { e.currentTarget.style.background = '#e81123'; e.currentTarget.style.color = '#fff' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
-        >
-          <svg width="11" height="11" viewBox="0 0 11 11"><path d="M0 0l11 11M11 0L0 11" stroke="currentColor" strokeWidth="1.1" /></svg>
-        </button>
-      </div>
+      {!isMac && (
+        <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
+          <button
+            type="button"
+            title="Minimize"
+            onClick={() => api?.windowMinimize?.()}
+            style={btnStyle}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)'; e.currentTarget.style.color = 'var(--side-tx-1)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11"><path d="M0 5.5h11" stroke="currentColor" strokeWidth="1.1" /></svg>
+          </button>
+          <button
+            type="button"
+            title={maximized ? 'Restore' : 'Maximize'}
+            onClick={() => api?.windowMaximizeToggle?.().then(setMaximized)}
+            style={btnStyle}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)'; e.currentTarget.style.color = 'var(--side-tx-1)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
+          >
+            {maximized ? (
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.1">
+                <rect x="2.5" y="0.5" width="8" height="8" />
+                <rect x="0.5" y="2.5" width="8" height="8" fill="var(--side-bg)" />
+              </svg>
+            ) : (
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.1">
+                <rect x="0.5" y="0.5" width="10" height="10" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            title="Close"
+            onClick={() => api?.windowClose?.()}
+            style={btnStyle}
+            onMouseEnter={e => { e.currentTarget.style.background = '#e81123'; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
+          >
+            <svg width="11" height="11" viewBox="0 0 11 11"><path d="M0 0l11 11M11 0L0 11" stroke="currentColor" strokeWidth="1.1" /></svg>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
