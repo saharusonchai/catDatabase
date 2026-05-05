@@ -5,7 +5,7 @@ const net  = require('net')
 const crypto = require('crypto')
 const os = require('os')
 
-const isDev = process.env.NODE_ENV !== 'production'
+const isDev = !app.isPackaged
 const appIconPath = path.join(__dirname, '..', 'build', 'icons', 'icon.png')
 
 // ── Lazy-load drivers (avoid crash if native module missing) ──────────────────
@@ -26,8 +26,13 @@ const AUTH_SESSION_DAYS = 30
 const sessions = new Map()
 
 function loadEnvFile() {
-  const envPath = path.join(process.cwd(), '.env')
-  if (!fs.existsSync(envPath)) return
+  const candidates = [path.join(process.cwd(), '.env')]
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, '.env'))
+  }
+
+  const envPath = candidates.find(p => p && fs.existsSync(p))
+  if (!envPath) return
 
   const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
   for (const line of lines) {
