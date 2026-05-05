@@ -1646,7 +1646,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 900, minHeight: 600,
     icon: appIconPath,
-    frame: !isMac,
+    frame: isMac,
     ...(isMac ? { titleBarStyle: 'hiddenInset' } : {}),
     autoHideMenuBar: true,
     webPreferences: {
