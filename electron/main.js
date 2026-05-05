@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, dialog, globalShortcut } = require('electron')
 const fs = require('fs')
 const path = require('path')
 const net  = require('net')
@@ -1635,15 +1635,26 @@ function createDemoDatabase() {
 
 // ── Window ────────────────────────────────────────────────────────────────────
 function createWindow() {
+  Menu.setApplicationMenu(null)
+
   const win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 900, minHeight: 600,
     icon: appIconPath,
+    frame: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false, contextIsolation: true,
     },
-    title: 'CatDB', backgroundColor: '#1e2128',
+    title: 'CatDB', backgroundColor: '#f7f8fb',
   })
+
+  win.setMenu(null)
+  win.setMenuBarVisibility(false)
+
+  win.on('maximize',   () => win.webContents.send('window:maximize-change', true))
+  win.on('unmaximize', () => win.webContents.send('window:maximize-change', false))
+
   if (isDev) {
     win.loadURL('http://localhost:5173')
     win.webContents.once('did-finish-load', () => {
@@ -1653,6 +1664,30 @@ function createWindow() {
     win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 }
+
+// ── Window controls ──────────────────────────────────────────────────────────
+ipcMain.handle('window:minimize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  win?.minimize()
+})
+
+ipcMain.handle('window:maximize-toggle', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) return false
+  if (win.isMaximized()) win.unmaximize()
+  else win.maximize()
+  return win.isMaximized()
+})
+
+ipcMain.handle('window:close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  win?.close()
+})
+
+ipcMain.handle('window:is-maximized', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  return win?.isMaximized() ?? false
+})
 
 // ── IPC — file-based SQLite ───────────────────────────────────────────────────
 function openSQLiteFile(filePath) {

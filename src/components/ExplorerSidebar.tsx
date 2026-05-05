@@ -4,82 +4,60 @@ import type { Connection, ConnectionConfig, DatabaseNode, ExportScopeRequest, Im
 
 const api = window.electronAPI
 
-const IconDatabase = ({ tone = 'currentColor' }: { tone?: string }) => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke={tone} strokeWidth="1.2">
-    <ellipse cx="8" cy="3.6" rx="5.5" ry="2.1" />
-    <path d="M2.5 3.6v3.3c0 1.16 2.46 2.1 5.5 2.1s5.5-.94 5.5-2.1V3.6" />
-    <path d="M2.5 6.9v3.3c0 1.16 2.46 2.1 5.5 2.1s5.5-.94 5.5-2.1V6.9" />
+const Ic = ({ size = 14, sw = 1.6, children }: { size?: number; sw?: number; children: React.ReactNode }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+    {children}
   </svg>
 )
 
-const IconGrid = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-    <rect x="2" y="2" width="12" height="12" rx="1.6" />
-    <path d="M2 6h12M2 10h12M6 2v12M10 2v12" />
+const IconDB = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><ellipse cx="12" cy="5" rx="8" ry="2.5" /><path d="M4 5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5" /><path d="M4 11v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6" /></Ic>
+)
+const IconTable = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></Ic>
+)
+const IconEye = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></Ic>
+)
+const IconChevD = ({ open, size = 11, sw = 2.2 }: { open: boolean; size?: number; sw?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={sw}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.12s ease' }}
+  >
+    <polyline points="6 9 12 15 18 9" />
   </svg>
 )
-
-const IconEye = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M1.2 8s2.45-4 6.8-4 6.8 4 6.8 4-2.45 4-6.8 4-6.8-4-6.8-4Z" />
-    <circle cx="8" cy="8" r="2.1" />
-  </svg>
+const IconQuery = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><path d="M14 3v6h6" /><path d="m9 14 2 2 4-4" /></Ic>
 )
-
-const IconChevron = ({ open }: { open: boolean }) => (
-  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.16s ease' }}>
-    <path d="M3 1.8 6.8 5 3 8.2" />
-  </svg>
+const IconClose = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M18 6 6 18M6 6l12 12" /></Ic>
 )
-
-const IconBolt = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M8.8 1.5 3.6 8h3l-.4 6.5L11.8 8h-3.1l.1-6.5Z" />
-  </svg>
+const IconEdit = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" /></Ic>
 )
-
-const IconClose = () => (
-  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-    <path d="M2 2l6 6M8 2 2 8" />
-  </svg>
+const IconPlus = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M12 5v14M5 12h14" /></Ic>
 )
-
-const IconEdit = () => (
-  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2 10h2l5.2-5.2-2-2L2 8v2Z" />
-    <path d="m6.1 2.8 2 2" />
-  </svg>
+const IconTrash = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /></Ic>
 )
-
-const IconPlus = () => (
-  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-    <path d="M6 2v8M2 6h8" />
-  </svg>
+const IconExport = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Ic>
 )
-
-const IconTrash = () => (
-  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2.5 3h7" />
-    <path d="M4.1 3V2.2c0-.4.3-.7.7-.7h2.4c.4 0 .7.3.7.7V3" />
-    <path d="M3.3 3.8l.4 5.1c0 .6.4 1.1 1 1.1h2.6c.6 0 1-.5 1-1.1l.4-5.1" />
-    <path d="M5.1 5.2v2.8M6.9 5.2v2.8" />
-  </svg>
+const IconImport = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></Ic>
 )
-
-const IconExport = () => (
-  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 1.5v6" />
-    <path d="M3.8 3.7 6 1.5l2.2 2.2" />
-    <path d="M2 7.5v2.2c0 .5.3.8.8.8h6.4c.5 0 .8-.3.8-.8V7.5" />
-  </svg>
-)
-
-const IconImport = () => (
-  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 1.5v6" />
-    <path d="M3.8 5.3 6 7.5l2.2-2.2" />
-    <path d="M2 7.5v2.2c0 .5.3.8.8.8h6.4c.5 0 .8-.3.8-.8V7.5" />
-  </svg>
+const IconBolt = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></Ic>
 )
 
 const sameConnectionConfig = (left?: ConnectionConfig, right?: ConnectionConfig) => {
@@ -106,15 +84,19 @@ function DeleteTableConfirm({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal fade-in" style={{ minWidth: 360 }} onClick={event => event.stopPropagation()}>
-        <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: 'var(--red)' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, color: 'var(--red)', letterSpacing: '-0.01em' }}>
           Delete {itemType === 'view' ? 'view' : 'table'} "{tableName}"?
         </h3>
-        <p style={{ color: 'var(--text-secondary)', margin: '0 0 20px', fontSize: 13 }}>
+        <p style={{ color: 'var(--tx-2)', margin: '0 0 22px', fontSize: 13, lineHeight: 1.55 }}>
           This action cannot be undone.
         </p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-danger" style={{ background: 'var(--red)', color: '#fff' }} onClick={onConfirm}>
+          <button
+            className="btn"
+            style={{ background: 'var(--red)', color: '#fff', borderColor: 'var(--red)' }}
+            onClick={onConfirm}
+          >
             Delete
           </button>
         </div>
@@ -147,7 +129,7 @@ const TableList = memo(function TableList({
   })()
 
   return (
-    <div className="py-1">
+    <div style={{ paddingBottom: 4 }}>
       {tables.map(table => {
         const scopedName = databaseName ? `${databaseName}.${table.name}` : table.name
         const key = `${connection.id}::${scopedName}`
@@ -158,11 +140,6 @@ const TableList = memo(function TableList({
           <button
             key={scopedName}
             type="button"
-            className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
-              isActive
-                ? 'bg-[#0e2035] text-[#79bbff]'
-                : 'text-slate-400 hover:bg-[#131a24] hover:text-slate-200'
-            }`}
             onClick={() => selectTable(connection, table.name, databaseName)}
             onContextMenu={event => onTableContextMenu(event, {
               connection,
@@ -171,13 +148,44 @@ const TableList = memo(function TableList({
               schemaName: table.schema,
               itemType: table.type,
             })}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: databaseName ? '6px 10px 6px 44px' : '6px 10px 6px 28px',
+              borderRadius: 8,
+              border: 0,
+              background: isActive ? 'var(--side-active)' : 'transparent',
+              color: isActive ? 'var(--accent-fg)' : 'var(--side-tx-2)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              fontSize: 12,
+              fontWeight: isActive ? 600 : 400,
+              fontFamily: 'var(--mono)',
+              transition: 'background 0.12s ease',
+            }}
+            onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--side-hover)' }}
+            onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
           >
-            <span className={`inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center ${isView ? 'text-violet-400' : 'text-slate-500'} ${isActive ? 'text-[#79bbff]' : ''}`}>
-              {isView ? <IconEye /> : <IconGrid />}
+            <span style={{ display: 'inline-flex', color: isActive ? 'var(--accent-fg)' : (isView ? 'var(--purple)' : 'var(--side-tx-3)'), flexShrink: 0 }}>
+              {isView ? <IconEye size={11} sw={1.6} /> : <IconTable size={11} sw={1.6} />}
             </span>
-            <span className="min-w-0 flex-1 truncate">{table.name}</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{table.name}</span>
             {isView && !isActive && (
-              <span className="flex-shrink-0 rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide text-violet-500" style={{ background: 'rgba(139,92,246,0.1)' }}>
+              <span
+                style={{
+                  flexShrink: 0,
+                  padding: '1px 6px',
+                  fontSize: 9,
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  borderRadius: 4,
+                  color: 'var(--purple)',
+                  background: 'rgba(108, 92, 246, 0.10)',
+                }}
+              >
                 view
               </span>
             )}
@@ -187,10 +195,34 @@ const TableList = memo(function TableList({
 
       <button
         type="button"
-        className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-slate-500 transition-colors hover:bg-[#131a24] hover:text-[#79bbff]"
         onClick={() => openQuery(connection, { database: databaseName })}
+        style={{
+          marginTop: 2,
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: databaseName ? '6px 10px 6px 44px' : '6px 10px 6px 28px',
+          borderRadius: 8,
+          border: 0,
+          background: 'transparent',
+          color: 'var(--side-tx-3)',
+          cursor: 'pointer',
+          textAlign: 'left',
+          fontSize: 12,
+          fontFamily: 'var(--mono)',
+          transition: 'all 0.12s ease',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = 'var(--side-hover)'
+          e.currentTarget.style.color = 'var(--accent-fg)'
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = 'transparent'
+          e.currentTarget.style.color = 'var(--side-tx-3)'
+        }}
       >
-        <span className="inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center"><IconBolt /></span>
+        <span style={{ display: 'inline-flex', flexShrink: 0 }}><IconBolt size={11} sw={1.6} /></span>
         <span>New Query</span>
       </button>
     </div>
@@ -223,33 +255,50 @@ const DatabaseItem = memo(function DatabaseItem({
   }, [connection.id, database.name, database.tables, expanded, loadDatabaseTables, loading])
 
   return (
-    <div className="mt-0.5">
-      {/* Database row */}
+    <div>
       <button
         type="button"
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-slate-300 transition-colors hover:bg-[#131a24] hover:text-slate-100"
         onClick={handleToggle}
         onContextMenu={event => onDatabaseContextMenu(event, { connection, databaseName: database.name })}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '6px 10px 6px 28px',
+          borderRadius: 8,
+          border: 0,
+          background: 'transparent',
+          color: 'var(--side-tx-2)',
+          cursor: 'pointer',
+          textAlign: 'left',
+          fontSize: 11.5,
+          fontWeight: 500,
+          fontFamily: 'var(--mono)',
+          transition: 'background 0.12s ease',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
       >
-        <span className="inline-flex h-3 w-3 flex-shrink-0 items-center justify-center text-slate-600">
-          <IconChevron open={expanded} />
+        <span style={{ color: 'var(--side-tx-3)', display: 'inline-flex', flexShrink: 0 }}>
+          <IconChevD open={expanded} size={9} sw={2.4} />
         </span>
-        <span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center text-[#4a9edd]">
-          <IconDatabase tone="#4a9edd" />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{database.name}</span>
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{database.name}</span>
         {database.tables && (
-          <span className="flex-shrink-0 text-[10px] tabular-nums text-slate-600">{database.tables.length}</span>
+          <span style={{ fontSize: 10, color: 'var(--side-tx-3)' }}>{database.tables.length}</span>
         )}
       </button>
 
-      {/* Tables under this database — indented with guide line */}
       {expanded && (
-        <div className="ml-3.5 border-l border-[#1c2d3f] pl-3">
+        <div>
           {loading ? (
-            <div className="py-2 text-[11px] italic text-slate-600">Loading tables…</div>
+            <div style={{ padding: '6px 10px 6px 44px', fontSize: 11, fontStyle: 'italic', color: 'var(--side-tx-3)' }}>
+              Loading tables…
+            </div>
           ) : !database.tables || database.tables.length === 0 ? (
-            <div className="py-2 text-[11px] italic text-slate-600">No tables found</div>
+            <div style={{ padding: '6px 10px 6px 44px', fontSize: 11, fontStyle: 'italic', color: 'var(--side-tx-3)' }}>
+              No tables found
+            </div>
           ) : (
             <TableList connection={connection} tables={database.tables} databaseName={database.name} onTableContextMenu={onTableContextMenu} />
           )}
@@ -276,58 +325,101 @@ const ConnectionItem = memo(function ConnectionItem({
 }) {
   const closeConnection = useAppStore(s => s.closeConnection)
   const openQuery = useAppStore(s => s.openQuery)
+  const dot = 'var(--green)'
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0d1117] shadow-[0_4px_16px_rgba(0,0,0,0.25)]">
-      {/* ── Level 1: Connection header bar ── */}
-      <div className="flex items-center gap-1.5 border-b border-[#1b2735] bg-[#131a24] px-2.5 py-2">
+    <div style={{ marginBottom: 2 }}>
+      <div
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '0 4px 0 0',
+          borderRadius: 10,
+          transition: 'background 0.12s ease',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+      >
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[#0f141b]"
           onClick={() => onToggle(connection.id)}
           onContextMenu={event => onConnectionContextMenu(event, {
             connectionId: connection.id,
             connection,
             includeAddTable: !connection.databases || connection.databases.length === 0,
           })}
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 9,
+            padding: '8px 10px',
+            border: 0,
+            background: 'transparent',
+            cursor: 'pointer',
+            textAlign: 'left',
+            color: 'var(--side-tx-1)',
+            minWidth: 0,
+          }}
         >
-          {/* Status dot + DB icon */}
-          <span className="relative inline-flex h-4 w-4 flex-shrink-0 items-center justify-center text-[#79bbff]">
-            <IconDatabase tone="#79bbff" />
-            <span className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(74,222,128,0.7)]" />
+          <span style={{ color: 'var(--side-tx-3)', display: 'inline-flex', flexShrink: 0 }}>
+            <IconChevD open={expanded} size={11} sw={2.2} />
           </span>
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-100">
+          <span style={{ width: 6, height: 6, borderRadius: 99, background: dot, flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {connection.name}
           </span>
-          <span className="flex-shrink-0 text-slate-600">
-            <IconChevron open={expanded} />
-          </span>
         </button>
-
-        {/* Divider + action buttons */}
-        <div className="flex items-center gap-0.5 border-l border-[#1b2735] pl-1.5">
-          <button
-            type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-[#0f141b] hover:text-[#79bbff]"
-            onClick={() => openQuery(connection)}
-            title="New Query"
-          >
-            <IconBolt />
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-[#0f141b] hover:text-rose-400"
-            onClick={() => closeConnection(connection.id)}
-            title="Disconnect"
-          >
-            <IconClose />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => openQuery(connection)}
+          title="New Query"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 6,
+            border: 0,
+            background: 'transparent',
+            color: 'var(--side-tx-3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-fg)'; e.currentTarget.style.background = 'var(--surface)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--side-tx-3)'; e.currentTarget.style.background = 'transparent' }}
+        >
+          <IconBolt size={11} sw={1.7} />
+        </button>
+        <button
+          type="button"
+          onClick={() => closeConnection(connection.id)}
+          title="Disconnect"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 6,
+            border: 0,
+            background: 'transparent',
+            color: 'var(--side-tx-3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'var(--surface)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--side-tx-3)'; e.currentTarget.style.background = 'transparent' }}
+        >
+          <IconClose size={10} sw={2} />
+        </button>
       </div>
 
-      {/* ── Level 2 & 3: Databases / Tables ── */}
       {expanded && (
-        <div className="px-2.5 pb-2.5 pt-2">
+        <div>
           {connection.databases && connection.databases.length > 0 ? (
             connection.databases.map(database => (
               <DatabaseItem
@@ -339,13 +431,15 @@ const ConnectionItem = memo(function ConnectionItem({
               />
             ))
           ) : connection.tables.length === 0 ? (
-            <div className="py-3 text-center text-[11px] italic text-slate-600">No tables found</div>
+            <div style={{ padding: '6px 10px 6px 28px', fontSize: 11, fontStyle: 'italic', color: 'var(--side-tx-3)' }}>
+              No tables found
+            </div>
           ) : (
             <TableList connection={connection} tables={connection.tables} onTableContextMenu={onTableContextMenu} />
           )}
         </div>
       )}
-    </section>
+    </div>
   )
 })
 
@@ -366,27 +460,36 @@ const SavedConnectionItem = memo(function SavedConnectionItem({
   }, [activating, onActivate, saved.id])
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#1b2735] bg-[#0d1117] shadow-[0_4px_16px_rgba(0,0,0,0.18)]">
-      <div className="flex items-center gap-1.5 bg-[#111820] px-2 py-1.5">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[#0f141b]"
-          disabled={activating}
-          onClick={handleActivate}
-          onContextMenu={event => onContextMenu(event, saved)}
-        >
-          <span className="relative inline-flex h-4 w-4 flex-shrink-0 items-center justify-center text-slate-500">
-            <IconDatabase tone="#79bbff" />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-200">
-            {activating ? 'Connecting...' : saved.label}
-          </span>
-          <span className="flex-shrink-0 text-slate-600">
-            <IconChevron open={false} />
-          </span>
-        </button>
-      </div>
-    </section>
+    <button
+      type="button"
+      disabled={activating}
+      onClick={handleActivate}
+      onContextMenu={event => onContextMenu(event, saved)}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 9,
+        padding: '8px 10px',
+        borderRadius: 10,
+        border: 0,
+        background: 'transparent',
+        cursor: 'pointer',
+        textAlign: 'left',
+        color: 'var(--side-tx-2)',
+        transition: 'background 0.12s ease, color 0.12s ease',
+      }}
+      onMouseEnter={e => { if (!activating) { e.currentTarget.style.background = 'var(--side-hover)'; e.currentTarget.style.color = 'var(--side-tx-1)' } }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
+    >
+      <span style={{ color: 'var(--side-tx-3)', display: 'inline-flex', flexShrink: 0 }}>
+        <IconChevD open={false} size={11} sw={2.2} />
+      </span>
+      <span style={{ width: 6, height: 6, borderRadius: 99, background: 'var(--tx-4)', flexShrink: 0 }} />
+      <span style={{ flex: 1, fontSize: 12.5, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {activating ? 'Connecting…' : saved.label}
+      </span>
+    </button>
   )
 })
 
@@ -394,6 +497,7 @@ export default function ExplorerSidebar() {
   const connections = useAppStore(s => s.connections)
   const savedConnections = useAppStore(s => s.savedConnections)
   const restoreSavedConnections = useAppStore(s => s.restoreSavedConnections)
+  const openConnectModal = useAppStore(s => s.openConnectModal)
   const openEditConnectionModal = useAppStore(s => s.openEditConnectionModal)
   const openEditSavedConnectionModal = useAppStore(s => s.openEditSavedConnectionModal)
   const deleteSavedConnection = useAppStore(s => s.deleteSavedConnection)
@@ -403,6 +507,11 @@ export default function ExplorerSidebar() {
   const activateSavedConnection = useAppStore(s => s.activateSavedConnection)
   const refreshConnectionTables = useAppStore(s => s.refreshConnectionTables)
   const setStatus = useAppStore(s => s.setStatus)
+  const openQuery = useAppStore(s => s.openQuery)
+  const authUser = useAppStore(s => s.authUser)
+  const tabs = useAppStore(s => s.tabs)
+  const activeTabId = useAppStore(s => s.activeTabId)
+
   const activeConnection = connections[0] ?? null
   const activeSavedConnectionId = activeConnection?.savedConnectionId
     ?? savedConnections.find(saved => sameConnectionConfig(saved.config, activeConnection?.config))?.id
@@ -410,6 +519,7 @@ export default function ExplorerSidebar() {
   const hasActiveSavedEntry = activeSavedConnectionId
     ? savedConnections.some(saved => saved.id === activeSavedConnectionId)
     : false
+
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; connectionId: string; connection: Connection; includeAddTable?: boolean } | null>(null)
   const [savedContextMenu, setSavedContextMenu] = useState<{ x: number; y: number; saved: SavedConnection } | null>(null)
@@ -433,14 +543,7 @@ export default function ExplorerSidebar() {
       setExpandedTransferMenu(null)
     }
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setContextMenu(null)
-        setSavedContextMenu(null)
-        setDatabaseContextMenu(null)
-        setTableContextMenu(null)
-        setDeleteTarget(null)
-        setExpandedTransferMenu(null)
-      }
+      if (event.key === 'Escape') closeMenu()
     }
 
     window.addEventListener('click', closeMenu)
@@ -461,9 +564,7 @@ export default function ExplorerSidebar() {
     setActivatingSavedId(id)
     try {
       const connection = await activateSavedConnection(id)
-      if (connection) {
-        setExpanded({ [connection.id]: true })
-      }
+      if (connection) setExpanded({ [connection.id]: true })
     } finally {
       setActivatingSavedId(null)
     }
@@ -572,237 +673,398 @@ export default function ExplorerSidebar() {
     scope: ExportScopeRequest['scope'] & ImportScopeRequest['scope'],
   ) => (
     <>
-      <div className="mt-1 border-t border-[#1b2735] pt-1" />
+      <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid var(--border-faint)' }} />
       <button
-        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
+        className="ctx-item"
         onClick={() => setExpandedTransferMenu(current => current === 'export' ? null : 'export')}
       >
-        <IconExport />
-        <span className="flex-1">Export</span>
-        <span className="text-slate-500"><IconChevron open={expandedTransferMenu === 'export'} /></span>
+        <IconExport size={14} sw={1.6} />
+        <span style={{ flex: 1, textAlign: 'left' }}>Export</span>
+        <span style={{ color: 'var(--tx-3)' }}><IconChevD open={expandedTransferMenu === 'export'} size={10} sw={2} /></span>
       </button>
       {expandedTransferMenu === 'export' && (
-        <div className="mb-1 ml-5 space-y-0.5 border-l border-[#203044] pl-2">
-          <button
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
-            onClick={() => void handleExportScope(connection, { mode: 'schema', scope })}
-          >
-            <IconExport />
-            <span>Schema Only</span>
+        <div style={{ marginLeft: 14, paddingLeft: 8, borderLeft: '1px solid var(--border-faint)' }}>
+          <button className="ctx-item ctx-item-sub" onClick={() => void handleExportScope(connection, { mode: 'schema', scope })}>
+            <IconExport size={12} sw={1.6} /><span>Schema Only</span>
           </button>
-          <button
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
-            onClick={() => void handleExportScope(connection, { mode: 'data', scope })}
-          >
-            <IconExport />
-            <span>Schema + Data</span>
+          <button className="ctx-item ctx-item-sub" onClick={() => void handleExportScope(connection, { mode: 'data', scope })}>
+            <IconExport size={12} sw={1.6} /><span>Schema + Data</span>
           </button>
-          <button
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
-            onClick={() => void handleExportScope(connection, { mode: 'ai', scope })}
-          >
-            <IconExport />
-            <span>AI Context</span>
+          <button className="ctx-item ctx-item-sub" onClick={() => void handleExportScope(connection, { mode: 'ai', scope })}>
+            <IconExport size={12} sw={1.6} /><span>AI Context</span>
           </button>
         </div>
       )}
       <button
-        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
+        className="ctx-item"
         onClick={() => setExpandedTransferMenu(current => current === 'import' ? null : 'import')}
       >
-        <IconImport />
-        <span className="flex-1">Import</span>
-        <span className="text-slate-500"><IconChevron open={expandedTransferMenu === 'import'} /></span>
+        <IconImport size={14} sw={1.6} />
+        <span style={{ flex: 1, textAlign: 'left' }}>Import</span>
+        <span style={{ color: 'var(--tx-3)' }}><IconChevD open={expandedTransferMenu === 'import'} size={10} sw={2} /></span>
       </button>
       {expandedTransferMenu === 'import' && (
-        <div className="ml-5 space-y-0.5 border-l border-[#203044] pl-2">
-          <button
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
-            onClick={() => void handleImportScope(connection, { mode: 'schema', scope })}
-          >
-            <IconImport />
-            <span>Schema Only</span>
+        <div style={{ marginLeft: 14, paddingLeft: 8, borderLeft: '1px solid var(--border-faint)' }}>
+          <button className="ctx-item ctx-item-sub" onClick={() => void handleImportScope(connection, { mode: 'schema', scope })}>
+            <IconImport size={12} sw={1.6} /><span>Schema Only</span>
           </button>
-          <button
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
-            onClick={() => void handleImportScope(connection, { mode: 'data', scope })}
-          >
-            <IconImport />
-            <span>Data Only</span>
+          <button className="ctx-item ctx-item-sub" onClick={() => void handleImportScope(connection, { mode: 'data', scope })}>
+            <IconImport size={12} sw={1.6} /><span>Data Only</span>
           </button>
-          <button
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-300 transition hover:bg-[#16202c]"
-            onClick={() => void handleImportScope(connection, { mode: 'schema-data', scope })}
-          >
-            <IconImport />
-            <span>Schema + Data</span>
+          <button className="ctx-item ctx-item-sub" onClick={() => void handleImportScope(connection, { mode: 'schema-data', scope })}>
+            <IconImport size={12} sw={1.6} /><span>Schema + Data</span>
           </button>
         </div>
       )}
     </>
   )
 
+  const initials = (authUser?.username ?? 'CD').slice(0, 2).toUpperCase()
+
+  const totalSources = savedConnections.length || connections.length
+
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? null
+  const activeConn = activeTab
+    ? connections.find(c => c.id === activeTab.connectionId) ?? null
+    : connections[0] ?? null
+
   return (
-    <aside className="flex w-[270px] min-w-[270px] flex-col overflow-hidden border-r border-[#1b2735] bg-[#0f141b]">
-      {/* Sidebar header */}
-      <div className="border-b border-[#1b2735] px-4 py-3">
-        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-600">Connections</div>
-        <div className="mt-0.5 text-[11px] text-slate-500">
-          <span className="text-emerald-500">{connections.length}</span> active
-          <span className="mx-1.5 text-slate-700">·</span>
-          {savedConnections.length} saved
+    <aside
+      style={{
+        width: 248,
+        minWidth: 220,
+        flexShrink: 0,
+        background: 'var(--side-bg)',
+        borderRight: '1px solid var(--side-border)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        padding: '24px 16px',
+      }}
+    >
+      {/* brand */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 4px 24px' }}>
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            background: 'var(--accent)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontWeight: 800,
+            fontSize: 13,
+            letterSpacing: '-0.04em',
+          }}
+        >
+          C
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--side-tx-1)', letterSpacing: '-0.02em' }}>
+            CatDB <span style={{ color: 'var(--side-tx-3)', fontWeight: 500, fontSize: 11 }}>PRO</span>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3">
-        <div className="space-y-2">
+      {/* quick actions */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 22 }}>
+        <button
+          type="button"
+          onClick={openConnectModal}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '10px 12px',
+            borderRadius: 10,
+            background: 'var(--accent)',
+            color: '#fff',
+            border: 0,
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: 12.5,
+            fontWeight: 600,
+            transition: 'background 0.12s ease',
+            boxShadow: 'var(--shadow-sm)',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-2)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent)' }}
+        >
+          <span style={{ display: 'inline-flex' }}><IconPlus size={13} sw={2.2} /></span>
+          <span>Connect DB</span>
+        </button>
+        <button
+          type="button"
+          disabled={!activeConn}
+          onClick={() => activeConn && openQuery(activeConn, { database: activeTab?.database })}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '10px 12px',
+            borderRadius: 10,
+            background: 'var(--inset)',
+            color: 'var(--side-tx-1)',
+            border: 0,
+            cursor: activeConn ? 'pointer' : 'not-allowed',
+            textAlign: 'left',
+            fontSize: 12.5,
+            fontWeight: 600,
+            opacity: activeConn ? 1 : 0.5,
+            transition: 'background 0.12s ease',
+          }}
+          onMouseEnter={e => { if (activeConn) e.currentTarget.style.background = 'var(--side-hover)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--inset)' }}
+        >
+          <span style={{ display: 'inline-flex', color: 'var(--accent-fg)' }}><IconQuery size={13} sw={1.8} /></span>
+          <span>New Query</span>
+          <span
+            style={{
+              marginLeft: 'auto',
+              fontSize: 10,
+              color: 'var(--side-tx-3)',
+              fontFamily: 'var(--mono)',
+              padding: '1px 6px',
+              background: 'var(--surface)',
+              borderRadius: 4,
+              fontWeight: 500,
+            }}
+          >
+            ⌘N
+          </span>
+        </button>
+      </div>
+
+      {/* sources label */}
+      <div
+        style={{
+          padding: '0 12px 8px',
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'var(--side-tx-3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <span>Sources</span>
+        <span style={{ fontSize: 10, color: 'var(--side-tx-3)', fontFamily: 'var(--mono)' }}>{totalSources}</span>
+      </div>
+
+      {/* tree */}
+      <div style={{ flex: 1, overflowY: 'auto', margin: '0 -4px' }}>
         {savedConnections.length === 0 && connections.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#1e2d40] bg-[#0d1117] px-5 py-8 text-center">
-            <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#131a24] text-[#4a9edd]">
-              <IconDatabase tone="#4a9edd" />
+          <div
+            style={{
+              margin: '8px 4px',
+              padding: '20px 14px',
+              borderRadius: 12,
+              border: '1.5px dashed var(--border-strong)',
+              background: 'var(--side-bg-2)',
+              textAlign: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                margin: '0 auto 10px',
+                borderRadius: 10,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'var(--accent-soft)',
+                color: 'var(--accent-fg)',
+              }}
+            >
+              <IconDB size={18} sw={1.7} />
             </div>
-            <div className="mt-3 text-sm font-semibold text-slate-200">No connections yet</div>
-            <div className="mt-1.5 text-xs leading-5 text-slate-500">Create a new connection to start exploring your databases.</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--side-tx-1)', marginBottom: 4 }}>No connections yet</div>
+            <div style={{ fontSize: 11, color: 'var(--side-tx-3)', lineHeight: 1.5 }}>
+              Add a source to start exploring your databases.
+            </div>
           </div>
         ) : (
-          savedConnections.map(saved => {
-            const activeSavedConnection = activeSavedConnectionId === saved.id ? activeConnection : null
-            return activeSavedConnection ? (
+          <>
+            {savedConnections.map(saved => {
+              const activeSavedConnection = activeSavedConnectionId === saved.id ? activeConnection : null
+              return activeSavedConnection ? (
+                <ConnectionItem
+                  key={saved.id}
+                  connection={activeSavedConnection}
+                  expanded={!!expanded[activeSavedConnection.id]}
+                  onToggle={handleToggle}
+                  onConnectionContextMenu={handleConnectionContextMenu}
+                  onDatabaseContextMenu={handleDatabaseContextMenu}
+                  onTableContextMenu={handleTableContextMenu}
+                />
+              ) : (
+                <SavedConnectionItem
+                  key={saved.id}
+                  saved={saved}
+                  activating={activatingSavedId === saved.id}
+                  onActivate={handleActivateSaved}
+                  onContextMenu={handleSavedConnectionContextMenu}
+                />
+              )
+            })}
+            {savedConnections.length === 0 && connections.map(connection => (
               <ConnectionItem
-                key={saved.id}
-                connection={activeSavedConnection}
-                expanded={!!expanded[activeSavedConnection.id]}
+                key={connection.id}
+                connection={connection}
+                expanded={!!expanded[connection.id]}
                 onToggle={handleToggle}
                 onConnectionContextMenu={handleConnectionContextMenu}
                 onDatabaseContextMenu={handleDatabaseContextMenu}
                 onTableContextMenu={handleTableContextMenu}
               />
-            ) : (
-              <SavedConnectionItem
-                key={saved.id}
-                saved={saved}
-                activating={activatingSavedId === saved.id}
-                onActivate={handleActivateSaved}
-                onContextMenu={handleSavedConnectionContextMenu}
+            ))}
+            {savedConnections.length > 0 && connections[0] && !hasActiveSavedEntry && !activatingSavedId && (
+              <ConnectionItem
+                key={connections[0].id}
+                connection={connections[0]}
+                expanded={!!expanded[connections[0].id]}
+                onToggle={handleToggle}
+                onConnectionContextMenu={handleConnectionContextMenu}
+                onDatabaseContextMenu={handleDatabaseContextMenu}
+                onTableContextMenu={handleTableContextMenu}
               />
-            )
-          })
+            )}
+          </>
         )}
-        {savedConnections.length === 0 && connections.map(connection => (
-          <ConnectionItem
-            key={connection.id}
-            connection={connection}
-            expanded={!!expanded[connection.id]}
-            onToggle={handleToggle}
-            onConnectionContextMenu={handleConnectionContextMenu}
-            onDatabaseContextMenu={handleDatabaseContextMenu}
-            onTableContextMenu={handleTableContextMenu}
-          />
-        ))}
-        {savedConnections.length > 0 && connections[0] && !hasActiveSavedEntry && !activatingSavedId && (
-          <ConnectionItem
-            key={connections[0].id}
-            connection={connections[0]}
-            expanded={!!expanded[connections[0].id]}
-            onToggle={handleToggle}
-            onConnectionContextMenu={handleConnectionContextMenu}
-            onDatabaseContextMenu={handleDatabaseContextMenu}
-            onTableContextMenu={handleTableContextMenu}
-          />
-        )}
+      </div>
+
+      {/* user card */}
+      <div
+        style={{
+          marginTop: 16,
+          padding: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          borderRadius: 12,
+          background: 'var(--side-bg-2)',
+          border: '1px solid var(--side-border)',
+        }}
+      >
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 999,
+            background: 'var(--accent)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 700,
+          }}
+        >
+          {initials}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--side-tx-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {authUser?.username ?? 'Guest'}
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--side-tx-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {authUser?.email ?? 'Not signed in'}
+          </div>
         </div>
       </div>
 
-      {/* Context menu — Saved connection */}
+      {/* Context menus — keep current behaviour, restyle wrapper */}
+      <style>{`
+        .ctx-menu {
+          position: fixed;
+          z-index: 1200;
+          min-width: 200px;
+          overflow: hidden;
+          border-radius: 12px;
+          background: var(--surface);
+          padding: 6px;
+          box-shadow: var(--shadow-lg);
+        }
+        .ctx-heading {
+          padding: 6px 10px 4px;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--tx-3);
+        }
+        .ctx-item {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 10px;
+          border: 0;
+          background: transparent;
+          color: var(--tx-1);
+          cursor: pointer;
+          text-align: left;
+          font-size: 12.5px;
+          font-family: var(--font);
+          border-radius: 8px;
+          transition: background 0.12s ease;
+        }
+        .ctx-item:hover { background: var(--hover); }
+        .ctx-item-sub { font-size: 12px; color: var(--tx-2); padding: 6px 10px; }
+        .ctx-item-danger { color: var(--red); }
+        .ctx-item-danger:hover { background: var(--red-soft); }
+      `}</style>
+
       {savedContextMenu && (
         <div
-          className="fixed z-[1200] min-w-[210px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
+          className="ctx-menu"
           style={{ left: savedContextMenu.x, top: savedContextMenu.y }}
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
         >
-          <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-            Saved Tab
-          </div>
-          <button
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
-            onClick={() => {
-              openEditSavedConnectionModal(savedContextMenu.saved.id)
-              setSavedContextMenu(null)
-            }}
-          >
-            <IconEdit />
-            <span>Edit</span>
+          <div className="ctx-heading">Saved Tab</div>
+          <button className="ctx-item" onClick={() => { openEditSavedConnectionModal(savedContextMenu.saved.id); setSavedContextMenu(null) }}>
+            <IconEdit size={13} sw={1.6} /><span>Edit</span>
           </button>
-          <button
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-300 transition hover:bg-[#2a1820] hover:text-rose-200"
-            onClick={() => {
-              deleteSavedConnection(savedContextMenu.saved.id)
-              setSavedContextMenu(null)
-            }}
-          >
-            <IconTrash />
-            <span>Delete</span>
+          <button className="ctx-item ctx-item-danger" onClick={() => { deleteSavedConnection(savedContextMenu.saved.id); setSavedContextMenu(null) }}>
+            <IconTrash size={13} sw={1.6} /><span>Delete</span>
           </button>
         </div>
       )}
 
-      {/* Context menu — Connection */}
       {contextMenu && (
         <div
-          className="fixed z-[1200] min-w-[180px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
+          className="ctx-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
         >
-          <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-            Connection
-          </div>
-          <button
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
-            onClick={() => {
-              openEditConnectionModal(contextMenu.connectionId)
-              setContextMenu(null)
-            }}
-          >
-            <IconEdit />
-            <span>Edit</span>
+          <div className="ctx-heading">Connection</div>
+          <button className="ctx-item" onClick={() => { openEditConnectionModal(contextMenu.connectionId); setContextMenu(null) }}>
+            <IconEdit size={13} sw={1.6} /><span>Edit</span>
           </button>
           {contextMenu.includeAddTable && (
-            <button
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
-              onClick={() => {
-                openCreateTable(contextMenu.connection)
-                setContextMenu(null)
-              }}
-            >
-              <IconPlus />
-              <span>Add Table</span>
+            <button className="ctx-item" onClick={() => { openCreateTable(contextMenu.connection); setContextMenu(null) }}>
+              <IconPlus size={13} sw={1.8} /><span>Add Table</span>
             </button>
           )}
         </div>
       )}
 
-      {/* Context menu — Database */}
       {databaseContextMenu && (
         <div
-          className="fixed z-[1200] min-w-[180px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
+          className="ctx-menu"
           style={{ left: databaseContextMenu.x, top: databaseContextMenu.y }}
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
         >
-          <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-            Database
-          </div>
-          <button
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
-            onClick={() => {
-              openCreateTable(databaseContextMenu.connection, databaseContextMenu.databaseName, databaseContextMenu.schemaName)
-              setDatabaseContextMenu(null)
-            }}
-          >
-            <IconPlus />
-            <span>Add Table</span>
+          <div className="ctx-heading">Database</div>
+          <button className="ctx-item" onClick={() => { openCreateTable(databaseContextMenu.connection, databaseContextMenu.databaseName, databaseContextMenu.schemaName); setDatabaseContextMenu(null) }}>
+            <IconPlus size={13} sw={1.8} /><span>Add Table</span>
           </button>
           {renderTransferButtons(databaseContextMenu.connection, {
             type: 'database',
@@ -812,29 +1074,19 @@ export default function ExplorerSidebar() {
         </div>
       )}
 
-      {/* Context menu — Table */}
       {tableContextMenu && (
         <div
-          className="fixed z-[1200] min-w-[210px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
+          className="ctx-menu"
           style={{ left: tableContextMenu.x, top: tableContextMenu.y }}
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
         >
-          <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-            Table
-          </div>
-          <button
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
-            onClick={() => {
-              openEditTable(tableContextMenu.connection, tableContextMenu.tableName, tableContextMenu.databaseName, tableContextMenu.schemaName)
-              setTableContextMenu(null)
-            }}
-          >
-            <IconEdit />
-            <span>Edit Table</span>
+          <div className="ctx-heading">Table</div>
+          <button className="ctx-item" onClick={() => { openEditTable(tableContextMenu.connection, tableContextMenu.tableName, tableContextMenu.databaseName, tableContextMenu.schemaName); setTableContextMenu(null) }}>
+            <IconEdit size={13} sw={1.6} /><span>Edit Table</span>
           </button>
           <button
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-300 transition hover:bg-[#2a1820] hover:text-rose-200"
+            className="ctx-item ctx-item-danger"
             onClick={() => {
               setDeleteTarget({
                 connection: tableContextMenu.connection,
@@ -846,8 +1098,7 @@ export default function ExplorerSidebar() {
               setTableContextMenu(null)
             }}
           >
-            <IconTrash />
-            <span>{tableContextMenu.itemType === 'view' ? 'Delete View' : 'Delete Table'}</span>
+            <IconTrash size={13} sw={1.6} /><span>{tableContextMenu.itemType === 'view' ? 'Delete View' : 'Delete Table'}</span>
           </button>
           {renderTransferButtons(tableContextMenu.connection, {
             type: 'table',

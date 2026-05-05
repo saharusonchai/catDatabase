@@ -35,4 +35,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateRow:          (id, table, rowid, data, db) => ipcRenderer.invoke('db:update-row', id, table, rowid, data, db),
   deleteRow:          (id, table, rowid, db)       => ipcRenderer.invoke('db:delete-row', id, table, rowid, db),
   runQuery:           (id, sql, db)                => ipcRenderer.invoke('db:run-query', id, sql, db),
+
+  // ── Window controls ───────────────────────────────────────────────────────
+  windowMinimize:        ()                        => ipcRenderer.invoke('window:minimize'),
+  windowMaximizeToggle:  ()                        => ipcRenderer.invoke('window:maximize-toggle'),
+  windowClose:           ()                        => ipcRenderer.invoke('window:close'),
+  windowIsMaximized:     ()                        => ipcRenderer.invoke('window:is-maximized'),
+  onWindowMaximizeChange: (cb) => {
+    const listener = (_event, value) => cb(Boolean(value))
+    ipcRenderer.on('window:maximize-change', listener)
+    return () => ipcRenderer.removeListener('window:maximize-change', listener)
+  },
 })

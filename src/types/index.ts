@@ -278,6 +278,13 @@ export interface ElectronAPI {
   updateRow:          (id: string, table: string, rowid: number | string, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
   deleteRow:          (id: string, table: string, rowid: number | string, db?: string) => Promise<RowMutationResult>
   runQuery:           (id: string, sql: string, db?: string)     => Promise<QueryResult>
+
+  // Window controls
+  windowMinimize:        ()                                        => Promise<void>
+  windowMaximizeToggle:  ()                                        => Promise<boolean>
+  windowClose:           ()                                        => Promise<void>
+  windowIsMaximized:     ()                                        => Promise<boolean>
+  onWindowMaximizeChange: (cb: (maximized: boolean) => void)       => () => void
 }
 
 // ── Global augmentation ───────────────────────────────────────────────────────

@@ -358,31 +358,113 @@ export default function CreateTableView({ connectionId, connectionName, database
   }, [activeTab, closeTab, columns, connection, database, dbType, mode, refreshConnectionTables, schemaName, selectTable, setStatus, sourceTableName, tableName])
 
   if (!connection) {
-    return <div className="p-8 text-sm text-rose-300">Connection not available.</div>
+    return (
+      <div style={{ padding: 32, fontSize: 13, color: 'var(--red)' }}>
+        Connection not available.
+      </div>
+    )
+  }
+
+  const headers = [
+    { key: 'Name',     label: 'Name',     fallback: 180 },
+    { key: 'Type',     label: 'Type',     fallback: 280 },
+    { key: 'Length',   label: 'Length',   fallback: 120 },
+    { key: 'PK',       label: 'PK',       fallback: 90  },
+    { key: 'Nullable', label: 'Nullable', fallback: 170 },
+    { key: 'Default',  label: 'Default',  fallback: 240 },
+    { key: 'Comment',  label: 'Comment',  fallback: 220 },
+    { key: 'Actions',  label: '',         fallback: 80  },
+  ]
+
+  const cellInputStyle: React.CSSProperties = {
+    height: 32,
+    width: '100%',
+    padding: '0 10px',
+    border: 0,
+    borderRadius: 8,
+    background: 'var(--inset)',
+    color: 'var(--tx-1)',
+    fontFamily: 'var(--mono)',
+    fontSize: 12,
+    outline: 'none',
+    transition: 'box-shadow 0.12s ease',
+  }
+
+  const thStyle: React.CSSProperties = {
+    background: 'var(--surface)',
+    padding: '0 16px',
+    height: 40,
+    textAlign: 'left',
+    fontWeight: 600,
+    fontSize: 11,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    color: 'var(--tx-3)',
+    borderBottom: '1px solid var(--border)',
+    fontFamily: 'var(--font)',
+    whiteSpace: 'nowrap',
+  }
+
+  const tdStyle: React.CSSProperties = {
+    padding: '8px 10px',
+    borderBottom: '1px solid var(--border-faint)',
+    background: 'transparent',
+    verticalAlign: 'middle',
   }
 
   return (
-    <div className="h-full overflow-auto bg-[#0f141b]">
-      <section className="border-b border-[#1b2735] px-6 py-5">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{mode === 'edit' ? 'Edit Table' : 'Create Table'}</div>
-        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-          <div className="min-w-[320px] flex-1">
-            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Table Name</label>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'auto', background: 'var(--surface)' }} className="fade-in">
+      {/* Header */}
+      <section style={{ padding: '20px 24px 18px', borderBottom: '1px solid var(--border-faint)', flexShrink: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--tx-3)' }}>
+          {mode === 'edit' ? 'Edit Table' : 'Create Table'}
+        </div>
+
+        <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ minWidth: 320, flex: 1 }}>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: 8,
+                fontSize: 10.5,
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--tx-3)',
+              }}
+            >
+              Table Name
+            </label>
             <input
               value={tableName}
               onChange={event => setTableName(event.target.value)}
               placeholder="new_table"
               autoComplete="off"
               disabled={mode === 'edit' && !canEditSchema}
-              className="h-11 w-full max-w-[420px] rounded-xl border border-[#1b2735] bg-[#0b1118] px-4 text-sm text-slate-100 outline-none transition focus:border-[#005FB8]"
+              style={{
+                height: 40,
+                width: '100%',
+                maxWidth: 420,
+                padding: '0 14px',
+                border: 0,
+                borderRadius: 10,
+                background: 'var(--inset)',
+                color: 'var(--tx-1)',
+                fontSize: 13,
+                fontFamily: 'var(--mono)',
+                outline: 'none',
+                transition: 'box-shadow 0.12s ease',
+              }}
+              onFocus={e => { e.currentTarget.style.boxShadow = 'var(--focus)' }}
+              onBlur={e => { e.currentTarget.style.boxShadow = 'none' }}
             />
-            <div className="mt-2 text-xs text-slate-500">
+            <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--tx-3)' }}>
               {database ? `Database: ${database}` : connectionName}
               {schemaName ? ` • Schema: ${schemaName}` : ''}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               type="button"
               onClick={() => {
@@ -390,14 +472,45 @@ export default function CreateTableView({ connectionId, connectionName, database
                 setError(null)
               }}
               disabled={!canEditSchema}
-              className="rounded-xl border border-[#244466] bg-[#102235] px-4 py-2.5 text-sm font-medium text-[#79bbff] transition hover:border-[#2f5e8f] hover:bg-[#12304c]"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '0 14px',
+                height: 36,
+                borderRadius: 999,
+                border: '1px dashed var(--border-strong)',
+                background: 'transparent',
+                color: 'var(--tx-2)',
+                fontSize: 12.5,
+                fontWeight: 500,
+                cursor: canEditSchema ? 'pointer' : 'not-allowed',
+                opacity: canEditSchema ? 1 : 0.5,
+                transition: 'all 0.12s ease',
+              }}
+              onMouseEnter={e => { if (canEditSchema) { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent-fg)' } }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--tx-2)' }}
             >
-              Add Row
+              <span style={{ fontSize: 14, lineHeight: 1 }}>+</span>
+              <span>Add Column</span>
             </button>
             <button
               type="button"
               onClick={() => activeTab && closeTab(activeTab.id)}
-              className="rounded-xl border border-[#1b2735] bg-[#121821] px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-[#2d4f70]"
+              style={{
+                padding: '0 16px',
+                height: 36,
+                borderRadius: 999,
+                border: 0,
+                background: 'transparent',
+                color: 'var(--tx-2)',
+                fontSize: 12.5,
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.12s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--tx-1)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--tx-2)' }}
             >
               Cancel
             </button>
@@ -405,43 +518,84 @@ export default function CreateTableView({ connectionId, connectionName, database
               type="button"
               onClick={() => void handleCreate()}
               disabled={saving || loadingStructure || !canEditSchema}
-              className="rounded-xl bg-[#005FB8] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0a6ccb] disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                padding: '0 18px',
+                height: 36,
+                borderRadius: 999,
+                border: 0,
+                background: (saving || loadingStructure || !canEditSchema) ? 'var(--border-strong)' : 'var(--accent)',
+                color: '#fff',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: (saving || loadingStructure || !canEditSchema) ? 'not-allowed' : 'pointer',
+                transition: 'background 0.12s ease',
+              }}
+              onMouseEnter={e => { if (!(saving || loadingStructure || !canEditSchema)) e.currentTarget.style.background = 'var(--accent-2)' }}
+              onMouseLeave={e => { if (!(saving || loadingStructure || !canEditSchema)) e.currentTarget.style.background = 'var(--accent)' }}
             >
-              {mode === 'edit' ? (saving ? 'Saving...' : 'Save Changes') : saving ? 'Creating...' : 'Create Table'}
+              {mode === 'edit' ? (saving ? 'Saving…' : 'Save Changes') : saving ? 'Creating…' : 'Create Table'}
             </button>
           </div>
         </div>
       </section>
 
-      <section className="px-3 py-4">
-        {loadingStructure && <div className="mb-4 rounded-xl border border-[#244466] bg-[#102235]/40 px-4 py-3 text-sm text-slate-200">Loading table structure...</div>}
+      {/* Body */}
+      <section style={{ padding: '18px 24px 24px', flex: 1, minHeight: 0 }}>
+        {loadingStructure && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: 'var(--accent-soft)',
+              color: 'var(--accent-fg)',
+              fontSize: 12.5,
+              fontWeight: 500,
+            }}
+          >
+            Loading table structure…
+          </div>
+        )}
         {mode === 'edit' && !loadingStructure && !canEditSchema && (
-          <div className="mb-4 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: 'var(--yellow-soft)',
+              color: 'var(--yellow)',
+              fontSize: 12.5,
+              fontWeight: 500,
+            }}
+          >
             Existing values are loaded into the form. Saving schema edits is currently supported only for SQLite and PostgreSQL.
           </div>
         )}
-        <h4 className="mb-3 px-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-slate-400">Columns ({columns.length})</h4>
-        <div className="overflow-hidden rounded-md border border-[#1b2735]">
-          <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-[#111821] text-[11px] uppercase tracking-[0.08em] text-[#7f97b7]">
+
+        <h4
+          style={{
+            margin: '0 4px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: 'var(--tx-3)',
+          }}
+        >
+          Columns <span style={{ marginLeft: 4, padding: '1px 7px', borderRadius: 999, background: 'var(--inset)', color: 'var(--tx-2)', fontFamily: 'var(--mono)', fontSize: 10 }}>{columns.length}</span>
+        </h4>
+
+        <div style={{ overflow: 'hidden', borderRadius: 'var(--r-lg)', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12 }}>
+            <thead>
               <tr>
-                {[
-                  // { key: '#', label: '#', fallback: 90, className: 'border-b border-r border-[#1b2735] px-4 py-3 text-left font-medium' },
-                  { key: 'Name', label: 'Name', fallback: 180, className: 'border-b border-r border-[#1b2735] px-4 py-3 text-left font-medium' },
-                  { key: 'Type', label: 'Type', fallback: 280, className: 'border-b border-r border-[#1b2735] px-4 py-3 text-left font-medium' },
-                  { key: 'Length', label: 'Length', fallback: 120, className: 'border-b border-r border-[#1b2735] px-4 py-3 text-left font-medium' },
-                  { key: 'PK', label: 'PK', fallback: 90, className: 'border-b border-r border-[#1b2735] px-4 py-3 text-left font-medium' },
-                  { key: 'Nullable', label: 'Nullable', fallback: 170, className: 'border-b border-r border-[#1b2735] px-4 py-3 text-left font-medium' },
-                  { key: 'Default', label: 'Default', fallback: 240, className: 'border-b border-r border-[#1b2735] px-4 py-3 text-left font-medium' },
-                  { key: 'Comment', label: 'Comment', fallback: 220, className: 'border-b border-r border-[#1b2735] px-4 py-3 text-left font-medium' },
-                  { key: 'Actions', label: 'Actions', fallback: 130, className: 'border-b border-[#1b2735] px-4 py-3 text-left font-medium' },
-                ].map(header => (
-                  <th key={header.key} className={header.className} style={getColumnWidth(header.key, header.fallback)}>
-                    <div className="relative flex items-center">
+                {headers.map(header => (
+                  <th key={header.key} style={{ ...thStyle, ...getColumnWidth(header.key, header.fallback) }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                       <span>{header.label}</span>
                       <span
                         onMouseDown={event => handleResizeStart(header.key, event)}
-                        className="absolute -right-2 -top-2 h-8 w-4 cursor-col-resize"
+                        style={{ position: 'absolute', right: -8, top: -4, height: 32, width: 12, cursor: 'col-resize' }}
                       />
                     </div>
                   </th>
@@ -450,52 +604,52 @@ export default function CreateTableView({ connectionId, connectionName, database
             </thead>
             <tbody>
               {columns.map((column, index) => (
-                <tr key={column.id} className={index % 2 === 0 ? 'bg-[#0f141b]' : 'bg-[#101720]'}>
-                  {/* <td className="border-b border-r border-[#182433] px-4 py-3 font-mono text-xs text-slate-500">{index}</td> */}
-                  <td className="border-b border-r border-[#182433] px-3 py-2">
+                <tr key={column.id} style={{ background: 'transparent' }}>
+                  <td style={tdStyle}>
                     <input
                       value={column.name}
                       onChange={event => updateColumn(column.id, current => ({ ...current, name: event.target.value }))}
                       placeholder="column_name"
                       autoComplete="off"
                       disabled={!canEditSchema}
-                      className="h-8 w-full rounded-md border border-[#1b2735] bg-[#0b1118] px-3 font-mono text-sm text-[#79bbff] outline-none transition focus:border-[#005FB8]"
+                      style={{ ...cellInputStyle, color: 'var(--accent-fg)', fontWeight: 600 }}
+                      onFocus={e => { e.currentTarget.style.boxShadow = 'var(--focus)' }}
+                      onBlur={e => { e.currentTarget.style.boxShadow = 'none' }}
                     />
                   </td>
-                  <td className="border-b border-r border-[#182433] px-3 py-2">
-                    <div className="flex items-center gap-3">
-                      <select
-                        value={column.type}
-                        onChange={event => {
-                          const option = typeOptions.find(item => item.value === event.target.value)
-                          updateColumn(column.id, current => ({
-                            ...current,
-                            type: event.target.value,
-                            length: option?.allowLength ? (current.type === event.target.value ? current.length : (option.defaultLength ?? '')) : '',
-                          }))
-                        }}
-                        disabled={!canEditSchema}
-                        className="h-8 rounded-md border border-[#1b2735] bg-[#0b1118] px-3 font-mono text-sm text-slate-100 outline-none transition focus:border-[#005FB8]"
-                      >
-                        {typeOptions.map(option => (
-                          <option key={option.value} value={option.value} className="bg-[#0b1118] text-slate-100">
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
-                      {/* <TypeBadge type={column.type} /> */}
-                    </div>
+                  <td style={tdStyle}>
+                    <select
+                      value={column.type}
+                      onChange={event => {
+                        const option = typeOptions.find(item => item.value === event.target.value)
+                        updateColumn(column.id, current => ({
+                          ...current,
+                          type: event.target.value,
+                          length: option?.allowLength ? (current.type === event.target.value ? current.length : (option.defaultLength ?? '')) : '',
+                        }))
+                      }}
+                      disabled={!canEditSchema}
+                      style={{ ...cellInputStyle, color: 'var(--orange)', cursor: 'pointer' }}
+                    >
+                      {typeOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </select>
                   </td>
-                  <td className="border-b border-r border-[#182433] px-3 py-2">
+                  <td style={tdStyle}>
                     <input
                       value={column.length}
                       onChange={event => updateColumn(column.id, current => ({ ...current, length: event.target.value }))}
                       placeholder={(typeOptions.find(option => option.value === column.type)?.defaultLength) ?? ''}
                       disabled={!canEditSchema || !typeOptions.find(option => option.value === column.type)?.allowLength}
-                      className="h-8 w-full rounded-md border border-[#1b2735] bg-[#0b1118] px-3 font-mono text-sm text-slate-100 outline-none transition focus:border-[#005FB8] disabled:cursor-not-allowed disabled:opacity-50"
+                      style={{ ...cellInputStyle, opacity: typeOptions.find(option => option.value === column.type)?.allowLength ? 1 : 0.5 }}
+                      onFocus={e => { e.currentTarget.style.boxShadow = 'var(--focus)' }}
+                      onBlur={e => { e.currentTarget.style.boxShadow = 'none' }}
                     />
                   </td>
-                  <td className="border-b border-r border-[#182433] px-4 py-3">
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>
                     <input
                       type="checkbox"
                       checked={column.isPrimaryKey}
@@ -505,47 +659,60 @@ export default function CreateTableView({ connectionId, connectionName, database
                         notNull: event.target.checked ? true : current.notNull,
                       }))}
                       disabled={!canEditSchema}
-                      className="h-4 w-4 accent-[#ffcf52]"
+                      style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }}
                     />
                   </td>
-                  <td className="border-b border-r border-[#182433] px-4 py-3">
-                    <label className="inline-flex items-center gap-2">
+                  <td style={tdStyle}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                       <input
                         type="checkbox"
                         checked={!(column.notNull || column.isPrimaryKey)}
                         disabled={column.isPrimaryKey || !canEditSchema}
                         onChange={event => updateColumn(column.id, current => ({ ...current, notNull: !event.target.checked }))}
-                        className="h-4 w-4 accent-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: column.isPrimaryKey ? 'not-allowed' : 'pointer' }}
                       />
-                      <span className={`font-mono text-xs ${column.notNull || column.isPrimaryKey ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      <span
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          letterSpacing: '0.04em',
+                          fontFamily: 'var(--font)',
+                          background: column.notNull || column.isPrimaryKey ? 'var(--red-soft)' : 'var(--green-soft)',
+                          color: column.notNull || column.isPrimaryKey ? 'var(--red)' : 'var(--green)',
+                        }}
+                      >
                         {column.notNull || column.isPrimaryKey ? 'NOT NULL' : 'NULL'}
                       </span>
                     </label>
                   </td>
-                  <td className="border-b border-r border-[#182433] px-3 py-2">
+                  <td style={tdStyle}>
                     <select
                       value={column.defaultValue}
                       onChange={event => updateColumn(column.id, current => ({ ...current, defaultValue: event.target.value }))}
                       disabled={!canEditSchema}
-                      className="h-8 min-w-[220px] rounded-md border border-[#1b2735] bg-[#0b1118] px-3 font-mono text-sm text-orange-300 outline-none transition focus:border-[#005FB8]"
+                      style={{ ...cellInputStyle, minWidth: 200, color: 'var(--orange)', cursor: 'pointer' }}
                     >
                       {defaultOptions.map(option => (
-                        <option key={option.value} value={option.value} className="bg-[#0b1118] text-slate-100">
+                        <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
-                      </select>
+                    </select>
                   </td>
-                  <td className="border-b border-r border-[#182433] px-3 py-2">
+                  <td style={tdStyle}>
                     <input
                       value={column.comment}
                       onChange={event => updateColumn(column.id, current => ({ ...current, comment: event.target.value }))}
                       placeholder="comment"
                       disabled={!canEditSchema}
-                      className="h-8 w-full rounded-md border border-[#1b2735] bg-[#0b1118] px-3 text-sm text-slate-100 outline-none transition focus:border-[#005FB8]"
+                      style={{ ...cellInputStyle, fontFamily: 'var(--font)' }}
+                      onFocus={e => { e.currentTarget.style.boxShadow = 'var(--focus)' }}
+                      onBlur={e => { e.currentTarget.style.boxShadow = 'none' }}
                     />
                   </td>
-                  <td className="border-b border-[#182433] px-4 py-3">
+                  <td style={{ ...tdStyle, textAlign: 'center' }}>
                     <button
                       type="button"
                       disabled={columns.length === 1 || !canEditSchema}
@@ -553,9 +720,29 @@ export default function CreateTableView({ connectionId, connectionName, database
                         setColumns(prev => prev.filter(item => item.id !== column.id))
                         setError(null)
                       }}
-                      className="rounded-lg border border-[#283241] bg-[#121821] px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-rose-400/40 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Remove column"
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        border: 0,
+                        background: 'transparent',
+                        color: 'var(--tx-3)',
+                        cursor: columns.length === 1 || !canEditSchema ? 'not-allowed' : 'pointer',
+                        opacity: columns.length === 1 || !canEditSchema ? 0.4 : 1,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={e => { if (columns.length > 1 && canEditSchema) { e.currentTarget.style.background = 'var(--red-soft)'; e.currentTarget.style.color = 'var(--red)' } }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--tx-3)' }}
                     >
-                      Remove
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                      </svg>
                     </button>
                   </td>
                 </tr>
@@ -564,12 +751,65 @@ export default function CreateTableView({ connectionId, connectionName, database
           </table>
         </div>
 
-        {error && <div className="mt-4 rounded-xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div>}
+        {error && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: '10px 14px',
+              borderRadius: 10,
+              background: 'var(--red-soft)',
+              color: 'var(--red)',
+              fontSize: 12.5,
+              fontWeight: 500,
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         {previewSql && (
-          <div className="mt-5">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Preview SQL</div>
-            <pre className="overflow-x-auto rounded-xl border border-[#1b2735] bg-[#0b1118] px-4 py-4 font-mono text-[12px] leading-6 text-slate-300">{previewSql}</pre>
+          <div style={{ marginTop: 22 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 8,
+                fontSize: 10.5,
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                textTransform: 'uppercase',
+                color: 'var(--tx-3)',
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 99,
+                  background: 'var(--accent)',
+                  display: 'inline-block',
+                }}
+              />
+              Preview SQL
+            </div>
+            <pre
+              style={{
+                margin: 0,
+                padding: '14px 16px',
+                overflowX: 'auto',
+                borderRadius: 'var(--r-lg)',
+                background: 'var(--inset)',
+                color: 'var(--tx-1)',
+                fontFamily: 'var(--mono)',
+                fontSize: 12,
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {previewSql}
+            </pre>
           </div>
         )}
       </section>

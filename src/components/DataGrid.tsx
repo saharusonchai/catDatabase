@@ -765,27 +765,75 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     handleDelete,
   ])
 
+  const filterIsActive = filterPanelOpen || Boolean(appliedFilter)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, width: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
       {/* Toolbar */}
       <div className="toolbar" style={{ flexShrink: 0 }}>
-        <button className="btn btn-ghost" onClick={() => void loadData(page)()}><MdRefresh />  Refresh</button>
+        <button className="btn btn-ghost" onClick={() => void loadData(page)()}>
+          <MdRefresh size={13} /> Refresh
+        </button>
         <div className="toolbar-sep" />
         <button
-          className="btn btn-ghost"
+          className="btn"
           style={{
-            color: filterPanelOpen || appliedFilter ? 'var(--text-primary)' : 'var(--text-secondary)',
-            borderColor: appliedFilter ? 'rgba(82, 148, 232, 0.35)' : undefined,
-            background: appliedFilter ? 'rgba(82, 148, 232, 0.08)' : undefined,
+            background: filterIsActive ? 'var(--accent-soft)' : 'transparent',
+            color: filterIsActive ? 'var(--accent-fg)' : 'var(--tx-2)',
+            borderColor: filterIsActive ? 'transparent' : 'var(--border)',
+            fontWeight: filterIsActive ? 600 : 500,
           }}
           onClick={() => setFilterPanelOpen(open => !open)}
         >
-         <LuFilter/> SQL Filter{appliedFilter ? ' *' : ''}
+          <LuFilter size={12} />
+          <span>SQL Filter</span>
+          {appliedFilter && (
+            <span
+              style={{
+                marginLeft: 2,
+                width: 6,
+                height: 6,
+                borderRadius: 99,
+                background: 'var(--accent)',
+                display: 'inline-block',
+              }}
+            />
+          )}
         </button>
         <div className="toolbar-sep" />
-        <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter rows..."
-          style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '3px 8px', borderRadius: 4, fontSize: 12, fontFamily: 'JetBrains Mono', outline: 'none', width: 180 }}
-        />
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'var(--inset)',
+            borderRadius: 999,
+            padding: '0 10px 0 12px',
+            height: 30,
+            width: 200,
+          }}
+        >
+          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--tx-3)', flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            placeholder="Filter rows…"
+            style={{
+              background: 'transparent',
+              border: 0,
+              color: 'var(--tx-1)',
+              padding: 0,
+              fontSize: 12,
+              fontFamily: 'var(--mono)',
+              outline: 'none',
+              flex: 1,
+              minWidth: 0,
+            }}
+          />
+        </div>
         <div style={{ flex: 1 }} />
       </div>
 
@@ -793,32 +841,48 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
         <div
           className="fade-in"
           style={{
-            borderBottom: '1px solid var(--border)',
-            background: 'linear-gradient(180deg, rgba(18,24,33,0.98), rgba(14,19,26,0.98))',
-            padding: '10px 12px 12px',
+            borderBottom: '1px solid var(--border-faint)',
+            background: 'var(--surface-2)',
+            padding: '14px 18px 16px',
             flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <div style={{ display: 'inline-flex', padding: 3, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', borderRadius: 8 }}>
-              {(['builder', 'sql'] as FilterMode[]).map(mode => (
-                <button
-                  key={mode}
-                  className="btn"
-                  style={{
-                    padding: '5px 10px',
-                    border: 'none',
-                    borderRadius: 6,
-                    background: filterMode === mode ? 'rgba(82, 148, 232, 0.18)' : 'transparent',
-                    color: filterMode === mode ? '#dfeeff' : 'var(--text-secondary)',
-                  }}
-                  onClick={() => setFilterMode(mode)}
-                >
-                  {mode === 'builder' ? 'Builder' : 'SQL'}
-                </button>
-              ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                gap: 4,
+                padding: 4,
+                background: 'var(--inset)',
+                borderRadius: 999,
+              }}
+            >
+              {(['builder', 'sql'] as FilterMode[]).map(mode => {
+                const isActive = filterMode === mode
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => setFilterMode(mode)}
+                    style={{
+                      padding: '6px 14px',
+                      border: 0,
+                      background: isActive ? 'var(--surface)' : 'transparent',
+                      color: isActive ? 'var(--tx-1)' : 'var(--tx-3)',
+                      fontSize: 12,
+                      fontWeight: isActive ? 600 : 500,
+                      fontFamily: 'var(--font)',
+                      borderRadius: 999,
+                      cursor: 'pointer',
+                      boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
+                      transition: 'all 0.12s ease',
+                    }}
+                  >
+                    {mode === 'builder' ? 'Builder' : 'SQL'}
+                  </button>
+                )
+              })}
             </div>
-            <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+            <span style={{ fontSize: 12, color: 'var(--tx-3)' }}>
               {filterMode === 'builder' ? 'Build WHERE conditions visually' : 'Write a WHERE expression directly'}
             </span>
             <div style={{ flex: 1 }} />
@@ -843,6 +907,7 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
                       type="checkbox"
                       checked={clause.enabled}
                       onChange={event => setFilterClauses(prev => prev.map(item => item.id === clause.id ? { ...item, enabled: event.target.checked } : item))}
+                      style={{ accentColor: 'var(--accent)', width: 14, height: 14, cursor: 'pointer' }}
                     />
                     <select
                       value={clause.connector}
@@ -872,30 +937,76 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
                     </select>
                     <input
                       className="form-input"
+                      style={{ height: 32 }}
                       value={clause.value}
                       disabled={!operatorNeedsValue}
                       onChange={event => setFilterClauses(prev => prev.map(item => item.id === clause.id ? { ...item, value: event.target.value } : item))}
                       placeholder={operatorNeedsValue ? 'Value or SQL literal' : 'No value needed'}
                     />
                     <button
-                      className="btn btn-ghost"
-                      style={{ justifyContent: 'center', padding: 0, height: 32 }}
-                      disabled={filterClauses.length === 1}
                       onClick={() => setFilterClauses(prev => prev.filter(item => item.id !== clause.id))}
+                      disabled={filterClauses.length === 1}
+                      title="Remove condition"
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        border: 0,
+                        background: 'transparent',
+                        color: 'var(--tx-3)',
+                        cursor: filterClauses.length === 1 ? 'not-allowed' : 'pointer',
+                        opacity: filterClauses.length === 1 ? 0.4 : 1,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={e => { if (filterClauses.length > 1) { e.currentTarget.style.background = 'var(--red-soft)'; e.currentTarget.style.color = 'var(--red)' } }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--tx-3)' }}
                     >
-                      -
+                      <FiTrash2 size={13} />
                     </button>
                   </div>
                 )
               })}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button className="btn btn-ghost" onClick={() => setFilterClauses(prev => [...prev, createFilterClause(columns[0] ?? '')])}>+ Add Condition</button>
+              <div>
+                <button
+                  onClick={() => setFilterClauses(prev => [...prev, createFilterClause(columns[0] ?? '')])}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 12px',
+                    height: 30,
+                    border: '1px dashed var(--border-strong)',
+                    borderRadius: 999,
+                    background: 'transparent',
+                    color: 'var(--tx-2)',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.12s ease',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent-fg)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.color = 'var(--tx-2)' }}
+                >
+                  <FiPlus size={12} />
+                  <span>Add Condition</span>
+                </button>
               </div>
-              <div style={{ border: '1px solid var(--border)', background: 'var(--bg-input)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
+              <div
+                style={{
+                  border: 0,
+                  background: 'var(--surface)',
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  boxShadow: 'inset 0 0 0 1px var(--border-faint)',
+                }}
+              >
+                <div style={{ fontSize: 10.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--tx-3)', marginBottom: 6, fontWeight: 700 }}>
                   Generated WHERE
                 </div>
-                <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: builderSql ? 'var(--text-primary)' : 'var(--text-muted)', wordBreak: 'break-word' }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: builderSql ? 'var(--accent-fg)' : 'var(--tx-4)', wordBreak: 'break-word', fontStyle: builderSql ? 'normal' : 'italic' }}>
                   {builderSql || 'No active conditions yet'}
                 </div>
               </div>
@@ -907,21 +1018,77 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
                 value={filterSqlDraft}
                 onChange={event => setFilterSqlDraft(event.target.value)}
                 placeholder={`id = 1 AND name LIKE '%cat%'`}
-                style={{ minHeight: 110, borderRadius: 8, padding: 12 }}
+                style={{ minHeight: 110, borderRadius: 10, padding: 12 }}
               />
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--tx-3)' }}>
                 {'ใส่เฉพาะเงื่อนไขหลัง WHERE เช่น status = active AND age >= 2'}
               </div>
             </div>
           )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-            <button className="btn btn-primary" onClick={() => void handleApplyFilter()}>Apply Filter</button>
-            <button className="btn btn-ghost" onClick={() => void handleClearFilter()}>Reset</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+            <button
+              onClick={() => void handleApplyFilter()}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '0 16px',
+                height: 32,
+                borderRadius: 999,
+                background: 'var(--accent)',
+                color: '#fff',
+                border: 0,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'background 0.12s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-2)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent)' }}
+            >
+              Apply Filter
+            </button>
+            <button
+              onClick={() => void handleClearFilter()}
+              style={{
+                padding: '0 14px',
+                height: 32,
+                borderRadius: 999,
+                border: 0,
+                background: 'transparent',
+                color: 'var(--tx-2)',
+                fontSize: 12,
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.12s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--tx-1)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--tx-2)' }}
+            >
+              Reset
+            </button>
             <div style={{ flex: 1 }} />
             {appliedFilter && (
-              <div style={{ maxWidth: '55%', fontSize: 11.5, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Active: <span className="mono" style={{ color: 'var(--text-primary)' }}>{appliedFilter}</span>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  maxWidth: '60%',
+                  padding: '4px 10px 4px 12px',
+                  borderRadius: 999,
+                  background: 'var(--accent-soft)',
+                  color: 'var(--accent-fg)',
+                  fontSize: 11.5,
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                <span style={{ fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', fontSize: 10 }}>Active</span>
+                <span className="mono" style={{ color: 'var(--accent-fg)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{appliedFilter}</span>
               </div>
             )}
           </div>

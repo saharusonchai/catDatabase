@@ -93,7 +93,7 @@ export default function AuthView() {
               value={form.username}
               onChange={event => setForm(current => ({ ...current, username: event.target.value }))}
               autoComplete="username"
-              placeholder="sahar"
+              placeholder="username"
             />
           </label>
 

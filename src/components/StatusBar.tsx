@@ -1,8 +1,8 @@
 import { memo } from 'react'
 import useAppStore from '../store/appStore'
 
-const IconPulse = ({ active }: { active: boolean }) => (
-  <span className={`inline-flex h-2.5 w-2.5 rounded-full ${active ? 'bg-emerald-400 shadow-[0_0_18px_rgba(52,211,153,0.45)]' : 'bg-slate-600'}`} />
+const Sep = () => (
+  <span style={{ width: 1, height: 12, background: 'rgba(255,255,255,0.12)', margin: '0 14px' }} />
 )
 
 export default memo(function StatusBar() {
@@ -10,17 +10,49 @@ export default memo(function StatusBar() {
   const connCount = useAppStore(s => s.connections.length)
   const { message, rows, time, error } = status
 
+  const dotColor = error ? 'var(--red)' : connCount > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.4)'
+  const stateLabel = error ? 'ERROR' : connCount > 0 ? 'READY' : 'IDLE'
+
   return (
-    <div className={`flex h-9 items-center gap-4 border-t px-4 text-[11px] ${error ? 'border-rose-400/20 bg-rose-500/12 text-rose-100' : 'border-white/6 bg-[#151922] text-slate-400'}`}>
-      <IconPulse active={connCount > 0} />
-      <span className={`truncate ${error ? 'text-rose-100' : 'text-slate-200'}`}>
+    <div
+      style={{
+        height: 28,
+        flexShrink: 0,
+        padding: '0 18px',
+        display: 'flex',
+        alignItems: 'center',
+        background: 'var(--primary)',
+        color: '#b6c2d6',
+        fontSize: 11,
+        fontFamily: 'var(--mono)',
+      }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 7, height: 7, borderRadius: 99, background: dotColor }} />
+        <span style={{ color: '#e6ecf5', fontWeight: 600, letterSpacing: '0.04em' }}>{stateLabel}</span>
+      </span>
+      <Sep />
+      <span style={{ color: error ? '#ffc4c0' : '#dde3ef', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '50%' }}>
         {message || 'Ready'}
       </span>
-      <div className="flex-1" />
-      {rows !== undefined && !error && <span>{rows.toLocaleString()} rows</span>}
-      {time !== undefined && !error && <span>{time}ms</span>}
-      <span>{connCount} connection{connCount !== 1 ? 's' : ''}</span>
-      <span className="text-slate-500">CatDB v2.0</span>
+      <div style={{ flex: 1 }} />
+      {rows !== undefined && !error && (
+        <>
+          <span><span style={{ opacity: 0.6 }}>rows</span> <span style={{ color: '#fff', fontWeight: 600 }}>{rows.toLocaleString()}</span></span>
+          <Sep />
+        </>
+      )}
+      {time !== undefined && !error && (
+        <>
+          <span><span style={{ opacity: 0.6 }}>latency</span> <span style={{ color: 'var(--accent-fg)', fontWeight: 600 }}>{time}ms</span></span>
+          <Sep />
+        </>
+      )}
+      <span><span style={{ opacity: 0.6 }}>connections</span> <span style={{ color: '#fff', fontWeight: 600 }}>{connCount}</span></span>
+      <Sep />
+      <span style={{ opacity: 0.6 }}>UTF-8</span>
+      <Sep />
+      <span style={{ opacity: 0.6 }}>v2.4.1</span>
     </div>
   )
 })

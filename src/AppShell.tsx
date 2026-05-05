@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import useAppStore from './store/appStore'
 import type { SubTab } from './types'
 import Sidebar from './components/ExplorerSidebar'
@@ -9,172 +9,373 @@ import CreateTableView from './components/CreateTableView'
 import StatusBar from './components/StatusBar'
 import ConnectModal from './components/ConnectSheet'
 import AuthView from './components/AuthView'
-import { AiOutlineApi  } from "react-icons/ai";
-import { CiViewTable } from "react-icons/ci";
 
-const IconMark = () => (
-  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-    <rect x="2" y="2" width="14" height="14" rx="3.5" fill="#005FB8" />
-    <path d="M5 6.2h4.2v4.2H5zM9.8 7.8H13v4.2H9.8zM7.4 10.2h3.2V13H7.4z" fill="#fff" />
+const Ic = ({ d, size = 16, sw = 1.6, children }: { d?: string; size?: number; sw?: number; children?: React.ReactNode }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+    {children || (d ? <path d={d} /> : null)}
   </svg>
 )
 
-const IconSearch = () => (
-  <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-    <circle cx="7" cy="7" r="4.5" />
-    <path d="m10.5 10.5 3 3" />
-  </svg>
+const IconTable = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></Ic>
 )
-
-const IconRefresh = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M13.5 3.5v4h-4" />
-    <path d="M13.2 7.2A5.5 5.5 0 1 1 11.8 4" />
-  </svg>
+const IconQuery = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="m9 14 2 2 4-4"/></Ic>
 )
-
-const IconHistory = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2.5 8A5.5 5.5 0 1 0 4 4.1" />
-    <path d="M2.5 2.8v2.7h2.7" />
-    <path d="M8 5.1v3.2l2 1.2" />
-  </svg>
+const IconCreateTable = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M12 9v12"/><path d="M16 15h4M18 13v4"/></Ic>
 )
-
-const IconSettings = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m6.8 1.9-.5 1.6a4.8 4.8 0 0 0-1.2.7L3.6 3.6 2 5.2l.6 1.5a4.8 4.8 0 0 0-.7 1.2l-1.6.5v2.2l1.6.5c.2.4.4.8.7 1.2L2 13.8l1.6 1.6 1.5-.6c.4.3.8.5 1.2.7l.5 1.6H9l.5-1.6c.4-.2.8-.4 1.2-.7l1.5.6 1.6-1.6-.6-1.5c.3-.4.5-.8.7-1.2l1.6-.5V8.9l-1.6-.5a4.8 4.8 0 0 0-.7-1.2l.6-1.5-1.6-1.6-1.5.6a4.8 4.8 0 0 0-1.2-.7L9 1.9H6.8Z" />
-    <circle cx="8" cy="8" r="2.1" />
-  </svg>
+const IconClose = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M18 6 6 18M6 6l12 12"/></Ic>
 )
-
-const IconRun = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M4 3.2v9.6l8-4.8-8-4.8Z" fill="currentColor" />
-  </svg>
+const IconPlus = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M12 5v14M5 12h14"/></Ic>
 )
-
-const IconAdd = () => (
-  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-    <path d="M9 3.5v11M3.5 9h11" />
-  </svg>
+const IconSearch = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></Ic>
 )
-
-const IconTableTab = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.1">
-    <rect x="1.3" y="1.3" width="9.4" height="9.4" rx="1.2" />
-    <path d="M1.3 4.5h9.4M4.5 1.3v9.4" />
-  </svg>
+const IconSun = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></Ic>
 )
-
-const IconQueryTab = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2 1.5h4.7L10 4.8v5A1.2 1.2 0 0 1 8.8 11H3.2A1.2 1.2 0 0 1 2 9.8V1.5Z" />
-    <path d="M6.7 1.5v3.3H10" />
-  </svg>
+const IconMoon = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></Ic>
 )
-
-const IconCreateTableTab = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1.3" y="1.3" width="9.4" height="9.4" rx="1.2" />
-    <path d="M1.3 4.5h9.4M6 1.8v8.4M3.3 7h5.4" />
-  </svg>
+const IconPlay = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" /></Ic>
+)
+const IconLogout = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></Ic>
+)
+const IconDB = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><ellipse cx="12" cy="5" rx="8" ry="2.5"/><path d="M4 5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5"/><path d="M4 11v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6"/></Ic>
 )
 
 const TAB_ICONS: Record<string, JSX.Element> = {
-  table: <IconTableTab />,
-  query: <IconQueryTab />,
-  'create-table': <IconCreateTableTab />,
+  table: <IconTable size={12} sw={1.7} />,
+  query: <IconQuery size={12} sw={1.7} />,
+  'create-table': <IconCreateTable size={12} sw={1.7} />,
 }
 
-function HeaderBar() {
+type Theme = 'light' | 'dark'
+
+function TitleBar() {
+  const api = window.electronAPI
+  const [maximized, setMaximized] = useState(false)
+
+  useEffect(() => {
+    if (!api?.windowIsMaximized) return
+    void api.windowIsMaximized().then(setMaximized)
+    const off = api.onWindowMaximizeChange?.(setMaximized)
+    return () => { off?.() }
+  }, [api])
+
+  const btnStyle: React.CSSProperties = {
+    width: 46,
+    height: '100%',
+    border: 0,
+    background: 'transparent',
+    color: 'var(--side-tx-2)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'background 0.12s ease, color 0.12s ease',
+    // @ts-expect-error -- electron drag region
+    WebkitAppRegion: 'no-drag',
+  }
+
+  return (
+    <div
+      style={{
+        height: 36,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        background: 'var(--side-bg)',
+        borderBottom: '1px solid var(--side-border)',
+        color: 'var(--side-tx-1)',
+        // @ts-expect-error -- electron drag region
+        WebkitAppRegion: 'drag',
+        userSelect: 'none',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '0 14px', flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: 5,
+            background: 'var(--accent)',
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 800,
+            letterSpacing: '-0.04em',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          C
+        </div>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--side-tx-1)', letterSpacing: '-0.01em' }}>
+          CatDB <span style={{ color: 'var(--side-tx-3)', fontWeight: 500 }}>· Workspace</span>
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
+        <button
+          type="button"
+          title="Minimize"
+          onClick={() => api?.windowMinimize?.()}
+          style={btnStyle}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)'; e.currentTarget.style.color = 'var(--side-tx-1)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
+        >
+          <svg width="11" height="11" viewBox="0 0 11 11"><path d="M0 5.5h11" stroke="currentColor" strokeWidth="1.1" /></svg>
+        </button>
+        <button
+          type="button"
+          title={maximized ? 'Restore' : 'Maximize'}
+          onClick={() => api?.windowMaximizeToggle?.().then(setMaximized)}
+          style={btnStyle}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)'; e.currentTarget.style.color = 'var(--side-tx-1)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
+        >
+          {maximized ? (
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.1">
+              <rect x="2.5" y="0.5" width="8" height="8" />
+              <rect x="0.5" y="2.5" width="8" height="8" fill="var(--side-bg)" />
+            </svg>
+          ) : (
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.1">
+              <rect x="0.5" y="0.5" width="10" height="10" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
+          title="Close"
+          onClick={() => api?.windowClose?.()}
+          style={btnStyle}
+          onMouseEnter={e => { e.currentTarget.style.background = '#e81123'; e.currentTarget.style.color = '#fff' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--side-tx-2)' }}
+        >
+          <svg width="11" height="11" viewBox="0 0 11 11"><path d="M0 0l11 11M11 0L0 11" stroke="currentColor" strokeWidth="1.1" /></svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function useTheme(): [Theme, () => void] {
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('catdb-theme') : null
+    return (saved === 'light' || saved === 'dark') ? saved : 'light'
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('catdb-theme', theme)
+  }, [theme])
+
+  const toggle = () => setTheme(t => (t === 'light' ? 'dark' : 'light'))
+  return [theme, toggle]
+}
+
+function LogoutConfirm({ username, onCancel, onConfirm }: { username: string; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal fade-in" style={{ minWidth: 400, maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <span
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              background: 'var(--red-soft)',
+              color: 'var(--red)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <IconLogout size={18} sw={1.8} />
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--tx-1)', letterSpacing: '-0.01em' }}>
+              ออกจากระบบ?
+            </h3>
+            <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--tx-2)', lineHeight: 1.55 }}>
+              คุณกำลังจะออกจากระบบในชื่อ <span style={{ fontWeight: 600, color: 'var(--tx-1)' }}>{username}</span>
+              {' '}และจะต้องเข้าสู่ระบบใหม่เพื่อใช้งานต่อ
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 22 }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: '0 16px',
+              height: 36,
+              borderRadius: 999,
+              border: 0,
+              background: 'transparent',
+              color: 'var(--tx-2)',
+              fontSize: 12.5,
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.12s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--tx-1)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--tx-2)' }}
+          >
+            ยกเลิก
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '0 16px',
+              height: 36,
+              borderRadius: 999,
+              border: 0,
+              background: 'var(--red)',
+              color: '#fff',
+              fontSize: 12.5,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'background 0.12s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#c54a45' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--red)' }}
+          >
+            <IconLogout size={12} sw={2} />
+            <span>ออกจากระบบ</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HeaderBar({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const openQuery = useAppStore(s => s.openQuery)
-  const openConnectModal = useAppStore(s => s.openConnectModal)
   const connections = useAppStore(s => s.connections)
   const tabs = useAppStore(s => s.tabs)
   const activeTabId = useAppStore(s => s.activeTabId)
   const authUser = useAppStore(s => s.authUser)
   const logout = useAppStore(s => s.logout)
-  const [search, setSearch] = useState('')
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) ?? null
   const activeConnection = activeTab
     ? connections.find(connection => connection.id === activeTab.connectionId) ?? null
     : connections[0] ?? null
 
+  const breadcrumbConn = activeConnection?.name ?? '—'
+  const titleLabel = activeTab?.label ?? 'Main Workspace'
+  const initials = (authUser?.username ?? 'CD').slice(0, 2).toUpperCase()
+
   return (
-    <header className="border-b border-[#1b2735] bg-[#0d1117]">
-      <div className="flex h-[74px] items-center gap-5 px-7">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[#1e3851] bg-[#102235] text-[#005FB8] shadow-[inset_0_0_0_1px_rgba(0,95,184,0.18)]">
-            <IconMark />
-          </span>
-          <div className="min-w-0">
-            <div className="truncate text-[15px] font-bold tracking-[-0.02em] text-slate-100">CatDB Workspace</div>
-            <div className="text-xs text-slate-500">
-              {activeConnection ? activeConnection.filePath : 'Connect a source to begin'}
-            </div>
-          </div>
+    <header
+      style={{
+        height: 72,
+        flexShrink: 0,
+        padding: '0 32px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        background: 'var(--bg)',
+      }}
+    >
+      <div style={{ minWidth: 0, flexShrink: 1 }}>
+        <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx-3)', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          Workspace <span style={{ color: 'var(--tx-4)', margin: '0 6px' }}>/</span> {breadcrumbConn}
         </div>
-
-        <div className="ml-4 flex min-w-0 flex-1 items-center gap-3">
-          <button
-            type="button"
-            onClick={openConnectModal}
-            className="inline-flex min-h-[22px] min-w-[110px] flex-col items-center justify-center gap-1 rounded-lg border border-[#1d3851] bg-[#102235] px-3 py-1 text-sm font-semibold text-[#79bbff] transition hover:border-[#005FB8] hover:bg-[#121b25]"
-          >
-            <span className="inline-flex h-5 w-5 items-center justify-center">
-              <AiOutlineApi size={24} />
-            </span>
-            <span>Connection</span>
-          </button>
-          <button
-            type="button"
-            disabled={!activeConnection}
-            onClick={() => activeConnection && openQuery(activeConnection, {
-              database: activeTab?.database,
-              tableName: activeTab?.type === 'table' ? activeTab.tableName : activeTab?.tableName,
-            })}
-            className="inline-flex min-h-[22px] min-w-[110px] flex-col items-center justify-center gap-1 rounded-lg border border-[#1d3851] bg-[#102235] px-3 py-1 text-sm font-semibold text-[#79bbff] transition hover:border-[#005FB8] hover:bg-[#121b25] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="inline-flex h-5 w-5 items-center justify-center">
-              <CiViewTable  size={24} />
-            </span>
-            <span>New Query</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {authUser && (
-            <div className="hidden min-w-0 text-right lg:block">
-              <div className="truncate text-[12px] font-semibold text-slate-200">{authUser.username}</div>
-              <div className="truncate text-[11px] text-slate-500">{authUser.email}</div>
-            </div>
-          )}
-          <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[#121821] hover:text-slate-200">
-            <IconSettings />
-          </button>
-          <button
-            type="button"
-            disabled={!activeConnection}
-            onClick={() => activeConnection && openQuery(activeConnection, {
-              database: activeTab?.database,
-              tableName: activeTab?.type === 'table' ? activeTab.tableName : activeTab?.tableName,
-            })}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#005FB8] px-4 text-sm font-semibold text-white transition hover:bg-[#0b6ac4] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <IconRun />
-            <span>Run SQL</span>
-          </button>
-          <button
-            type="button"
-            onClick={logout}
-            className="inline-flex h-11 items-center rounded-xl border border-[#1b2735] px-4 text-sm font-semibold text-slate-300 transition hover:border-[#244466] hover:bg-[#121821]"
-          >
-            Logout
-          </button>
+        <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--tx-1)', letterSpacing: '-0.025em', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 480 }}>
+          {titleLabel}
         </div>
       </div>
+
+      <div style={{ flex: 1 }} />
+
+      <button
+        type="button"
+        onClick={onToggleTheme}
+        title="Toggle theme"
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 999,
+          border: 0,
+          background: 'var(--surface)',
+          color: 'var(--tx-2)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          boxShadow: 'var(--shadow-sm)',
+        }}
+      >
+        {theme === 'dark' ? <IconSun size={15} sw={1.7} /> : <IconMoon size={15} sw={1.7} />}
+      </button>
+
+      <button
+        type="button"
+        disabled={!activeConnection}
+        onClick={() =>
+          activeConnection &&
+          openQuery(activeConnection, {
+            database: activeTab?.database,
+            tableName: activeTab?.type === 'table' ? activeTab.tableName : activeTab?.tableName,
+          })
+        }
+        className="btn-pill-primary"
+        style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+      >
+        <IconPlay size={11} sw={2} />
+        <span>Run SQL</span>
+      </button>
+
+      {authUser && (
+        <button
+          type="button"
+          onClick={() => setShowLogoutConfirm(true)}
+          title={`Sign out ${authUser.username}`}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 999,
+            border: 0,
+            background: 'var(--red-soft)',
+            color: 'var(--red)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: 'var(--shadow-sm)',
+            transition: 'background 0.12s ease, color 0.12s ease',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--red)'; e.currentTarget.style.color = '#fff' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--red-soft)'; e.currentTarget.style.color = 'var(--red)' }}
+        >
+          <IconLogout size={15} sw={1.7} />
+        </button>
+      )}
+
+      {showLogoutConfirm && authUser && (
+        <LogoutConfirm
+          username={authUser.username}
+          onCancel={() => setShowLogoutConfirm(false)}
+          onConfirm={() => { setShowLogoutConfirm(false); void logout() }}
+        />
+      )}
     </header>
   )
 }
@@ -185,57 +386,106 @@ function TabBar() {
   const setActiveTab = useAppStore(s => s.setActiveTab)
   const closeTab = useAppStore(s => s.closeTab)
   const closeAllTabs = useAppStore(s => s.closeAllTabs)
+  const openQuery = useAppStore(s => s.openQuery)
+  const connections = useAppStore(s => s.connections)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
 
   if (tabs.length === 0) return null
 
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? null
+  const activeConnection = activeTab
+    ? connections.find(c => c.id === activeTab.connectionId) ?? null
+    : connections[0] ?? null
+
   return (
-    <div className="relative border-b border-[#1b2735] bg-[#0f141b] px-4 pt-3">
-      <div className="flex overflow-x-auto">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            onContextMenu={event => {
-              event.preventDefault()
-              setActiveTab(tab.id)
-              setContextMenu({
-                x: Math.min(event.clientX, window.innerWidth - 190),
-                y: Math.min(event.clientY, window.innerHeight - 72),
-              })
-            }}
-            className={`group mr-2 inline-flex h-11 shrink-0 items-center gap-2 rounded-t-2xl border border-b-0 px-4 text-[12.5px] transition ${
-              tab.id === activeTabId
-                ? 'border-[#1b2735] bg-[#151d26] text-slate-100'
-                : 'border-transparent bg-transparent text-slate-500 hover:bg-[#121821] hover:text-slate-200'
-            }`}
-          >
-            <span className={`inline-flex h-4 w-4 items-center justify-center ${tab.id === activeTabId ? 'text-[#79bbff]' : 'text-slate-500'}`}>
-              {TAB_ICONS[tab.type]}
-            </span>
-            <span className="max-w-[240px] truncate">{tab.label}</span>
-            <span
-              className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-white/10 hover:text-slate-100"
-              onClick={event => {
-                event.stopPropagation()
-                closeTab(tab.id)
+    <div className="tab-bar-wrap">
+      <div className="tab-bar">
+        {tabs.map(tab => {
+          const isActive = tab.id === activeTabId
+          return (
+            <div
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              onContextMenu={event => {
+                event.preventDefault()
+                setActiveTab(tab.id)
+                setContextMenu({
+                  x: Math.min(event.clientX, window.innerWidth - 190),
+                  y: Math.min(event.clientY, window.innerHeight - 72),
+                })
               }}
+              className={`tab${isActive ? ' active' : ''}`}
             >
-              ×
-            </span>
-          </button>
-        ))}
+              <span className="tab-icon">{TAB_ICONS[tab.type]}</span>
+              <span
+                className="tab-label"
+                style={{ fontFamily: tab.type === 'query' ? 'var(--mono)' : 'var(--font)' }}
+              >
+                {tab.label}
+              </span>
+              <button
+                type="button"
+                className="close-btn"
+                onClick={event => {
+                  event.stopPropagation()
+                  closeTab(tab.id)
+                }}
+              >
+                <IconClose size={11} sw={2} />
+              </button>
+            </div>
+          )
+        })}
+        <button
+          type="button"
+          onClick={() => activeConnection && openQuery(activeConnection, { database: activeTab?.database })}
+          title="New tab"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 999,
+            border: 0,
+            background: 'transparent',
+            color: 'var(--tx-3)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'var(--surface)'
+            e.currentTarget.style.color = 'var(--tx-1)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.color = 'var(--tx-3)'
+          }}
+        >
+          <IconPlus size={14} sw={2} />
+        </button>
       </div>
+
       {contextMenu && (
         <div
-          className="fixed z-[1200] min-w-[180px] overflow-hidden rounded-2xl border border-[#1b2735] bg-[#0f161f] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 1200,
+            minWidth: 180,
+            overflow: 'hidden',
+            borderRadius: 12,
+            background: 'var(--surface)',
+            padding: 6,
+            boxShadow: 'var(--shadow-lg)',
+          }}
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
         >
           <button
-            className="flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-[#16202c]"
+            className="btn btn-ghost"
+            style={{ width: '100%', justifyContent: 'flex-start' }}
             onClick={() => {
               closeAllTabs()
               setContextMenu(null)
@@ -254,21 +504,19 @@ function SubTabBar({ tabId }: { tabId: string }) {
   const setSubTab = useAppStore(s => s.setSubTab)
 
   return (
-    <div className="flex gap-2 border-b border-[#1b2735] bg-[#111821] px-5">
-      {(['data', 'structure'] as const).map(tab => (
-        <button
-          key={tab}
-          type="button"
-          onClick={() => setSubTab(tabId, tab)}
-          className={`mb-[-1px] border-b-2 px-2 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] transition ${
-            subTab === tab
-              ? 'border-[#005FB8] text-[#79bbff]'
-              : 'border-transparent text-slate-500 hover:text-slate-200'
-          }`}
-        >
-          {tab}
-        </button>
-      ))}
+    <div className="sub-tab-bar">
+      <div className="sub-tab-group">
+        {(['data', 'structure'] as const).map(tab => (
+          <button
+            key={tab}
+            type="button"
+            className={`sub-tab${subTab === tab ? ' active' : ''}`}
+            onClick={() => setSubTab(tabId, tab)}
+          >
+            {tab === 'data' ? 'Data' : 'Structure'}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -297,35 +545,44 @@ function Overview() {
   }, [connections, savedConnections])
 
   return (
-    <div className="h-full overflow-auto bg-[#0b0f14] p-8">
-      <div className="grid gap-5 xl:grid-cols-3">
+    <div style={{ flex: 1, minHeight: 0, padding: 24, overflow: 'auto', background: 'var(--surface)' }} className="fade-in">
+      <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
         {[
-          { title: 'Active Connections', value: connections.length, note: 'Connections currently attached to this workspace.', accent: 'bg-emerald-400' },
-          { title: 'Open Tabs', value: tabs.length, note: 'Tables and query editors opened in the current session.', accent: 'bg-[#005FB8]' },
-          { title: 'Saved Connections', value: savedConnections.length, note: 'Available for reconnect the next time you open the app.', accent: 'bg-[#005FB8]' },
+          { title: 'Active Connections', value: connections.length, note: 'Connections currently attached to this workspace.' },
+          { title: 'Open Tabs', value: tabs.length, note: 'Tables and query editors open in the current session.' },
+          { title: 'Saved Connections', value: savedConnections.length, note: 'Available to reconnect next time you open the app.' },
         ].map(card => (
-          <div key={card.title} className="rounded-[28px] border border-[#1b2735] bg-[#121821] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{card.title}</div>
-                <div className="mt-3 text-[44px] font-bold leading-none tracking-[-0.05em] text-[#79bbff]">{card.value}</div>
-                <div className="mt-3 max-w-[280px] text-sm leading-6 text-slate-500">{card.note}</div>
-              </div>
-              <span className={`mt-1 inline-flex h-2.5 w-2.5 rounded-full ${card.accent}`} />
+          <div
+            key={card.title}
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--r-lg)',
+              padding: '20px 22px',
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--tx-3)' }}>
+              {card.title}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 36, fontWeight: 800, letterSpacing: '-0.04em', color: 'var(--accent-fg)', lineHeight: 1 }}>
+              {card.value}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 13, color: 'var(--tx-3)', lineHeight: 1.55 }}>
+              {card.note}
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-10 flex items-center justify-between">
+      <div style={{ marginTop: 28, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
-          <div className="text-lg font-bold tracking-[-0.03em] text-slate-100">Saved Connections</div>
-          <div className="mt-1 text-sm text-slate-500">Open a saved source quickly without rebuilding the connection details.</div>
+          <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--tx-1)' }}>Saved Connections</div>
+          <div style={{ marginTop: 4, fontSize: 13, color: 'var(--tx-3)' }}>Open a saved source quickly without rebuilding the connection.</div>
         </div>
-        <div className="text-sm font-medium text-slate-500">{savedConnections.length} available</div>
+        <div style={{ fontSize: 12, color: 'var(--tx-3)' }}>{savedConnections.length} available</div>
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-4">
+      <div style={{ marginTop: 18, display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
         {recentCards.map(card => {
           const type = card.config.dbType.toUpperCase()
           const host = card.config.host || card.config.database || 'Local file'
@@ -339,23 +596,45 @@ function Overview() {
                 const active = connections.find(connection => connection.name === label)
                 if (active) openQuery(active)
               }}
-              className="rounded-[24px] border border-[#1b2735] bg-[#121821] p-5 text-left shadow-[0_24px_60px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5 hover:border-[#244466]"
+              className="welcome-card"
+              style={{ textAlign: 'left', border: '1px solid var(--border)' }}
             >
-              <div className="flex items-start justify-between">
-                <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[#102235] text-[#79bbff]">
-                  <IconMark />
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <span
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'var(--accent-soft)',
+                    color: 'var(--accent-fg)',
+                  }}
+                >
+                  <IconDB size={18} sw={1.7} />
                 </span>
-                <span className="rounded-full bg-[#102235] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#79bbff]">
+                <span
+                  style={{
+                    padding: '3px 8px',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    borderRadius: 999,
+                    background: 'var(--inset)',
+                    color: 'var(--tx-2)',
+                  }}
+                >
                   {type}
                 </span>
               </div>
-              <div className="mt-5 text-[17px] font-bold tracking-[-0.03em] text-slate-100">{label}</div>
-              <div className="mt-2 text-sm leading-6 text-slate-500">{host}</div>
-              <div className="mt-6 border-t border-[#1b2735] pt-4 text-xs uppercase tracking-[0.12em] text-slate-600">
+              <div style={{ marginTop: 16, fontSize: 14, fontWeight: 700, color: 'var(--tx-1)', letterSpacing: '-0.02em' }}>{label}</div>
+              <div style={{ marginTop: 4, fontSize: 12, color: 'var(--tx-3)' }}>{host}</div>
+              <div style={{ marginTop: 18, paddingTop: 12, borderTop: '1px solid var(--border-faint)', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--tx-4)' }}>
                 Last access
-                <div className="mt-2 text-sm font-semibold normal-case tracking-normal text-slate-400">
-                  {new Date(card.lastUsed).toLocaleString()}
-                </div>
+              </div>
+              <div style={{ marginTop: 4, fontSize: 12, color: 'var(--tx-2)' }}>
+                {new Date(card.lastUsed).toLocaleString()}
               </div>
             </button>
           )
@@ -364,13 +643,45 @@ function Overview() {
         <button
           type="button"
           onClick={openConnectModal}
-          className="flex min-h-[250px] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#244466] bg-[#0f141b] text-center transition hover:border-[#005FB8] hover:bg-[#121821]"
+          style={{
+            minHeight: 220,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            border: '1.5px dashed var(--border-strong)',
+            borderRadius: 'var(--r-lg)',
+            background: 'var(--surface-2)',
+            color: 'var(--tx-2)',
+            cursor: 'pointer',
+            transition: 'all 0.12s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = 'var(--accent)'
+            e.currentTarget.style.color = 'var(--accent-fg)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = 'var(--border-strong)'
+            e.currentTarget.style.color = 'var(--tx-2)'
+          }}
         >
-          <span className="inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-[#121821] text-[36px] text-[#79bbff] shadow-[0_12px_30px_rgba(0,0,0,0.24)]">
-            +
+          <span
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--accent-soft)',
+              color: 'var(--accent-fg)',
+            }}
+          >
+            <IconPlus size={22} sw={2} />
           </span>
-          <div className="mt-5 text-lg font-bold text-slate-100">New Connection</div>
-          <div className="mt-2 max-w-[180px] text-sm leading-6 text-slate-500">
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--tx-1)' }}>New Connection</div>
+          <div style={{ maxWidth: 200, fontSize: 12, lineHeight: 1.55, color: 'var(--tx-3)', textAlign: 'center' }}>
             Create a new source and bring it into the workspace.
           </div>
         </button>
@@ -423,9 +734,9 @@ function MainContent() {
   const subTab: SubTab = subTabs[activeTab.id] ?? 'data'
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0f141b]">
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface)' }}>
       <SubTabBar tabId={activeTab.id} />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
         {subTab === 'data' ? (
           <DataGrid
             key={`${activeTab.connectionId}::${activeTab.database ?? ''}::${activeTab.tableName}`}
@@ -453,16 +764,28 @@ function DataGridFooterBar() {
   if (!gridFooter?.visible) return null
 
   return (
-    <div className="flex h-9 items-center gap-2 border-t border-[#1b2735] bg-[#131a22] px-4 text-[11px] text-slate-400">
-      <div className="flex items-center gap-2">
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 18px',
+        borderTop: '1px solid var(--border-faint)',
+        background: 'var(--surface)',
+        fontSize: 11.5,
+        color: 'var(--tx-2)',
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {gridFooter.selectionLabel && (
-          <span className="mr-1 text-slate-300">{gridFooter.selectionLabel}</span>
+          <span style={{ marginRight: 4, color: 'var(--tx-1)' }}>{gridFooter.selectionLabel}</span>
         )}
         {gridFooter.actions?.map(action => (
           <button
             key={action.key}
             className={action.variant === 'primary' ? 'btn btn-primary' : action.variant === 'danger' ? 'btn btn-danger' : 'btn btn-ghost'}
-            style={{ padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', height: 28 }}
             disabled={action.disabled}
             onClick={() => action.onClick?.()}
           >
@@ -471,19 +794,29 @@ function DataGridFooterBar() {
           </button>
         ))}
       </div>
-      <div className="ml-auto flex items-center gap-2">
-        <span className="mr-1">{gridFooter.summary}</span>
-        <button className="btn btn-ghost" style={{ padding: '3px 8px' }} disabled={!gridFooter.canPrev} onClick={() => gridFooter.onPrev?.()}>
-        Prev
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ marginRight: 4 }}>{gridFooter.summary}</span>
+        <button className="btn btn-ghost" style={{ padding: '0 10px', height: 28 }} disabled={!gridFooter.canPrev} onClick={() => gridFooter.onPrev?.()}>
+          Prev
         </button>
-        <span>{gridFooter.pageLabel}</span>
-        <button className="btn btn-ghost" style={{ padding: '3px 8px' }} disabled={!gridFooter.canNext} onClick={() => gridFooter.onNext?.()}>
-        Next
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>{gridFooter.pageLabel}</span>
+        <button className="btn btn-ghost" style={{ padding: '0 10px', height: 28 }} disabled={!gridFooter.canNext} onClick={() => gridFooter.onNext?.()}>
+          Next
         </button>
         <select
           value={gridFooter.limit}
           onChange={event => gridFooter.onLimitChange?.(Number(event.target.value))}
-          style={{ background: '#0b1118', border: '1px solid #1b2735', color: '#8592a3', padding: '3px 4px', borderRadius: 4, fontSize: 11.5, outline: 'none' }}
+          style={{
+            background: 'var(--inset)',
+            border: 0,
+            color: 'var(--tx-2)',
+            padding: '0 8px',
+            height: 28,
+            borderRadius: 8,
+            fontSize: 11.5,
+            outline: 'none',
+            fontFamily: 'var(--font)',
+          }}
         >
           {[50, 100, 250, 500, 1000].map(n => <option key={n} value={n}>{n} rows</option>)}
         </select>
@@ -497,6 +830,8 @@ export default function AppShell() {
   const authUser = useAppStore(s => s.authUser)
   const authLoading = useAppStore(s => s.authLoading)
   const loadCurrentUser = useAppStore(s => s.loadCurrentUser)
+  const tabs = useAppStore(s => s.tabs)
+  const [theme, toggleTheme] = useTheme()
 
   useEffect(() => {
     void loadCurrentUser()
@@ -504,27 +839,60 @@ export default function AppShell() {
 
   if (authLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0b0f14] text-sm font-semibold text-slate-400">
-        Loading CatDB...
+      <div style={{ display: 'flex', height: '100vh', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
+        <TitleBar />
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--tx-2)',
+            fontSize: 13,
+            fontWeight: 500,
+          }}
+        >
+          Loading CatDB…
+        </div>
       </div>
     )
   }
 
   if (!authUser) {
-    return <AuthView />
+    return (
+      <div style={{ display: 'flex', height: '100vh', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
+        <TitleBar />
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <AuthView />
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#0b0f14] text-slate-100">
-      <HeaderBar />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div style={{ display: 'flex', height: '100vh', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)', color: 'var(--tx-1)' }}>
+      <TitleBar />
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <Sidebar />
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <main style={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column', overflow: 'hidden' }}>
+          <HeaderBar theme={theme} onToggleTheme={toggleTheme} />
           <TabBar />
-          <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              margin: tabs.length > 0 ? '0 32px 24px' : '0 32px 24px',
+              background: 'var(--surface)',
+              borderRadius: 'var(--r-xl)',
+              boxShadow: 'var(--shadow-md)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
             <MainContent />
+            <DataGridFooterBar />
           </div>
-          <DataGridFooterBar />
         </main>
       </div>
       <StatusBar />
