@@ -74,6 +74,9 @@ const IconImport = (p: { size?: number; sw?: number }) => (
 const IconBolt = (p: { size?: number; sw?: number }) => (
   <Ic {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></Ic>
 )
+const IconServer = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><rect x="2" y="2" width="20" height="8" rx="2" /><rect x="2" y="14" width="20" height="8" rx="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /></Ic>
+)
 
 const sameConnectionConfig = (left?: ConnectionConfig, right?: ConnectionConfig) => {
   if (!left || !right) return false
@@ -524,6 +527,7 @@ export default function ExplorerSidebar() {
   const refreshConnectionTables = useAppStore(s => s.refreshConnectionTables)
   const setStatus = useAppStore(s => s.setStatus)
   const openQuery = useAppStore(s => s.openQuery)
+  const openServerMonitor = useAppStore(s => s.openServerMonitor)
   const authUser = useAppStore(s => s.authUser)
   const tabs = useAppStore(s => s.tabs)
   const activeTabId = useAppStore(s => s.activeTabId)
@@ -994,6 +998,31 @@ export default function ExplorerSidebar() {
           >
             ⌘N
           </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => openServerMonitor(activeConn ?? null)}
+          title="Open Server Monitor"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '10px 12px',
+            borderRadius: 10,
+            background: 'var(--inset)',
+            color: 'var(--side-tx-1)',
+            border: 0,
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontSize: 12.5,
+            fontWeight: 600,
+            transition: 'background 0.12s ease',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--side-hover)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--inset)' }}
+        >
+          <span style={{ display: 'inline-flex', color: 'var(--accent-fg)' }}><IconServer size={13} sw={1.7} /></span>
+          <span>Server Monitor</span>
         </button>
       </div>
 

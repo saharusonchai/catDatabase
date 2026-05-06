@@ -6,6 +6,7 @@ import DataGrid from './components/DataGrid'
 import QueryEditor from './components/QueryEditor'
 import StructureView from './components/StructureView'
 import CreateTableView from './components/CreateTableView'
+import ServerMonitorView from './components/ServerMonitorView'
 import StatusBar from './components/StatusBar'
 import ConnectModal from './components/ConnectSheet'
 import AuthView from './components/AuthView'
@@ -50,11 +51,15 @@ const IconLogout = (p: { size?: number; sw?: number }) => (
 const IconDB = (p: { size?: number; sw?: number }) => (
   <Ic {...p}><ellipse cx="12" cy="5" rx="8" ry="2.5"/><path d="M4 5v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5V5"/><path d="M4 11v6c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-6"/></Ic>
 )
+const IconServer = (p: { size?: number; sw?: number }) => (
+  <Ic {...p}><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></Ic>
+)
 
 const TAB_ICONS: Record<string, JSX.Element> = {
   table: <IconTable size={12} sw={1.7} />,
   query: <IconQuery size={12} sw={1.7} />,
   'create-table': <IconCreateTable size={12} sw={1.7} />,
+  'server-monitor': <IconServer size={12} sw={1.7} />,
 }
 
 type Theme = 'light' | 'dark'
@@ -739,6 +744,15 @@ function MainContent() {
         schemaName={activeTab.schemaName}
         tableName={activeTab.tableName}
         mode={activeTab.editorMode}
+      />
+    )
+  }
+
+  if (activeTab.type === 'server-monitor') {
+    return (
+      <ServerMonitorView
+        key={activeTab.id}
+        connectionId={activeTab.connectionId}
       />
     )
   }

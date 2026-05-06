@@ -58,7 +58,28 @@ export interface Connection {
 }
 
 export type SubTab = 'data' | 'structure'
-export type TabType = 'table' | 'query' | 'create-table'
+export type TabType = 'table' | 'query' | 'create-table' | 'server-monitor'
+
+export interface ServerProcess {
+  id: number | string
+  user?: string | null
+  host?: string | null
+  database?: string | null
+  command?: string | null
+  time?: number | null
+  state?: string | null
+  info?: string | null
+}
+
+export interface ProcessListResult {
+  rows?: ServerProcess[]
+  error?: string
+}
+
+export interface KillProcessResult {
+  success?: boolean
+  error?: string
+}
 
 export interface Tab {
   id: string
@@ -279,6 +300,8 @@ export interface ElectronAPI {
   updateRow:          (id: string, table: string, rowid: number | string, data: Record<string, string>, db?: string) => Promise<RowMutationResult>
   deleteRow:          (id: string, table: string, rowid: number | string, db?: string) => Promise<RowMutationResult>
   runQuery:           (id: string, sql: string, db?: string)     => Promise<QueryResult>
+  getProcessList:     (id: string)                                => Promise<ProcessListResult>
+  killProcess:        (id: string, processId: number | string)    => Promise<KillProcessResult>
 
   // Window controls
   windowMinimize:        ()                                        => Promise<void>

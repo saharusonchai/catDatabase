@@ -1107,6 +1107,29 @@ class MySQLAdapter {
     } catch (e) { return { error: e.message } }
   }
 
+  async getProcessList() {
+    const [rows] = await this.conn.query('SHOW FULL PROCESSLIST')
+    return rows.map(row => ({
+      id: row.Id,
+      user: row.User,
+      host: row.Host,
+      database: row.db,
+      command: row.Command,
+      time: row.Time,
+      state: row.State,
+      info: row.Info,
+    }))
+  }
+
+  async killProcess(processId) {
+    const id = Number(processId)
+    if (!Number.isFinite(id) || id <= 0) return { error: 'Invalid process id' }
+    try {
+      await this.conn.query(`KILL ${id}`)
+      return { success: true }
+    } catch (e) { return { error: e.message } }
+  }
+
   async close() { try { await this.conn.end() } catch (_) {} }
 }
 
@@ -1453,6 +1476,32 @@ class PostgreSQLAdapter {
           return { error: error.message }
         }
       })
+    } catch (e) { return { error: e.message } }
+  }
+
+  async getProcessList() {
+    const { rows } = await this.client.query(`
+      SELECT pid AS id,
+             usename AS user,
+             COALESCE(client_addr::text, 'local') AS host,
+             datname AS database,
+             application_name AS command,
+             EXTRACT(EPOCH FROM (now() - COALESCE(query_start, backend_start)))::int AS time,
+             state,
+             query AS info
+      FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid()
+      ORDER BY query_start DESC NULLS LAST
+    `)
+    return rows
+  }
+
+  async killProcess(processId) {
+    const id = Number(processId)
+    if (!Number.isFinite(id) || id <= 0) return { error: 'Invalid process id' }
+    try {
+      await this.client.query('SELECT pg_terminate_backend($1)', [id])
+      return { success: true }
     } catch (e) { return { error: e.message } }
   }
 
@@ -1849,6 +1898,24 @@ ipcMain.handle('db:run-query', async (_, id, sql, dbName) => {
   const conn = connections.get(id)
   if (!conn) return { error: 'Connection not found' }
   try { return await conn.adapter.runQuery(sql, dbName) } catch (e) { return { error: e.message } }
+})
+
+ipcMain.handle('db:process-list', async (_, id) => {
+  const conn = connections.get(id)
+  if (!conn) return { error: 'Connection not found' }
+  if (typeof conn.adapter.getProcessList !== 'function') {
+    return { error: 'Server Monitor is not supported for this connection type' }
+  }
+  try { return { rows: await conn.adapter.getProcessList() } } catch (e) { return { error: e.message } }
+})
+
+ipcMain.handle('db:kill-process', async (_, id, processId) => {
+  const conn = connections.get(id)
+  if (!conn) return { error: 'Connection not found' }
+  if (typeof conn.adapter.killProcess !== 'function') {
+    return { error: 'Killing processes is not supported for this connection type' }
+  }
+  try { return await conn.adapter.killProcess(processId) } catch (e) { return { error: e.message } }
 })
 
 ipcMain.handle('db:insert-row', async (_, id, table, data, dbName) => {

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Connection, Tab, StatusInfo, SubTab, IpcConnectionResult, ConnectionConfig, SavedConnection, DatabaseNode, TableItem, GridFooterState, AuthPayload, AuthUser, QueryContext } from '../types'
+import type { Connection, Tab, StatusInfo, SubTab, IpcConnectionResult, ConnectionConfig, SavedConnection, DatabaseNode, TableItem, GridFooterState, AuthPayload, AuthUser, QueryContext, RowMutationResult } from '../types'
 
 const api = window.electronAPI
 
@@ -58,6 +58,7 @@ interface AppState {
   authUser: AuthUser | null
   authToken: string | null
   authLoading: boolean
+  serverMonitorPickerToken: number
 }
 
 interface AppActions {
@@ -89,6 +90,7 @@ interface AppActions {
   openEditTable:   (connection: Connection, tableName: string, database?: string, schemaName?: string) => void
   deleteTable:     (connection: Connection, tableName: string, database?: string, schemaName?: string, itemType?: 'table' | 'view') => Promise<RowMutationResult>
   openQuery:       (connection: Connection, context?: QueryContext) => void
+  openServerMonitor: (connection?: Connection | null) => void
   setStatus:       (status: StatusInfo) => void
   setGridFooter:   (footer: GridFooterState | null) => void
   loadCurrentUser: () => Promise<void>
@@ -118,6 +120,7 @@ const useAppStore = create<AppStore>((set, get) => ({
   authUser: null,
   authToken: localStorage.getItem(AUTH_TOKEN_KEY),
   authLoading: true,
+  serverMonitorPickerToken: 0,
 
   // ── Connection actions ────────────────────────────────────────────────────
   loadSavedConnections: async () => {
@@ -248,7 +251,19 @@ const useAppStore = create<AppStore>((set, get) => ({
     const openConnectionIds = get().connections.map(connection => connection.id)
     if (openConnectionIds.length > 0) {
       await Promise.all(openConnectionIds.map(id => api.closeDatabase(id)))
-      set({ connections: [], tabs: [], activeTabId: null, subTabs: {}, gridFooter: null })
+      set(state => {
+        const survivingTabs = state.tabs.filter(tab => tab.type === 'server-monitor')
+        const activeStillExists = survivingTabs.some(tab => tab.id === state.activeTabId)
+        return {
+          connections: [],
+          tabs: survivingTabs,
+          activeTabId: activeStillExists
+            ? state.activeTabId
+            : survivingTabs[survivingTabs.length - 1]?.id ?? null,
+          subTabs: {},
+          gridFooter: null,
+        }
+      })
     }
 
     const conn = await api.connectRemote(config)
@@ -492,6 +507,19 @@ const useAppStore = create<AppStore>((set, get) => ({
       tableName: context.tableName,
       label: scope ? `Query — ${scope}` : `Query — ${connection.name}`,
     })
+  },
+
+  openServerMonitor: (connection = null) => {
+    const tabId = 'server-monitor::workspace'
+    const initialConnection = connection ?? get().connections[0] ?? null
+    get().openTab({
+      id: tabId,
+      type: 'server-monitor',
+      connectionId: initialConnection?.id ?? '',
+      connectionName: initialConnection?.name ?? 'Server Monitor',
+      label: 'Server Monitor',
+    })
+    set(state => ({ serverMonitorPickerToken: state.serverMonitorPickerToken + 1 }))
   },
 
   // ── Status ────────────────────────────────────────────────────────────────

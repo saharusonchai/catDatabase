@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateRow:          (id, table, rowid, data, db) => ipcRenderer.invoke('db:update-row', id, table, rowid, data, db),
   deleteRow:          (id, table, rowid, db)       => ipcRenderer.invoke('db:delete-row', id, table, rowid, db),
   runQuery:           (id, sql, db)                => ipcRenderer.invoke('db:run-query', id, sql, db),
+  getProcessList:     (id)                         => ipcRenderer.invoke('db:process-list', id),
+  killProcess:        (id, processId)              => ipcRenderer.invoke('db:kill-process', id, processId),
 
   // ── Window controls ───────────────────────────────────────────────────────
   windowMinimize:        ()                        => ipcRenderer.invoke('window:minimize'),
