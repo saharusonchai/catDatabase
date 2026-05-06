@@ -4,6 +4,21 @@ import type { Connection, ConnectionConfig, DatabaseNode, ExportScopeRequest, Im
 
 const api = window.electronAPI
 
+const SIDEBAR_WIDTH_KEY = 'catdb_sidebar_width'
+const SIDEBAR_DEFAULT_WIDTH = 248
+const SIDEBAR_MIN_WIDTH = 220
+const SIDEBAR_MAX_WIDTH = 520
+
+const clampSidebarWidth = (width: number) => (
+  Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width))
+)
+
+const loadSidebarWidth = () => {
+  if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH
+  const saved = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY))
+  return Number.isFinite(saved) ? clampSidebarWidth(saved) : SIDEBAR_DEFAULT_WIDTH
+}
+
 const Ic = ({ size = 14, sw = 1.6, children }: { size?: number; sw?: number; children: React.ReactNode }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
        stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
@@ -501,6 +516,7 @@ export default function ExplorerSidebar() {
   const openEditConnectionModal = useAppStore(s => s.openEditConnectionModal)
   const openEditSavedConnectionModal = useAppStore(s => s.openEditSavedConnectionModal)
   const deleteSavedConnection = useAppStore(s => s.deleteSavedConnection)
+  const reorderSavedConnections = useAppStore(s => s.reorderSavedConnections)
   const openCreateTable = useAppStore(s => s.openCreateTable)
   const openEditTable = useAppStore(s => s.openEditTable)
   const deleteTable = useAppStore(s => s.deleteTable)
@@ -528,10 +544,47 @@ export default function ExplorerSidebar() {
   const [deleteTarget, setDeleteTarget] = useState<{ connection: Connection; tableName: string; databaseName?: string; schemaName?: string; itemType: 'table' | 'view' } | null>(null)
   const [activatingSavedId, setActivatingSavedId] = useState<string | null>(null)
   const [expandedTransferMenu, setExpandedTransferMenu] = useState<'export' | 'import' | null>(null)
+  const [draggedSavedId, setDraggedSavedId] = useState<string | null>(null)
+  const [dragOverSaved, setDragOverSaved] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
+  const [sidebarResize, setSidebarResize] = useState<{ pointerId: number; startX: number; startWidth: number } | null>(null)
+  const [resizeHandleHovered, setResizeHandleHovered] = useState(false)
 
   useEffect(() => {
     void restoreSavedConnections()
   }, [restoreSavedConnections])
+
+  useEffect(() => {
+    if (!sidebarResize) return
+
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== sidebarResize.pointerId) return
+      const nextWidth = clampSidebarWidth(sidebarResize.startWidth + event.clientX - sidebarResize.startX)
+      setSidebarWidth(nextWidth)
+      window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(nextWidth))
+    }
+
+    const stopResize = (event: PointerEvent) => {
+      if (event.pointerId !== sidebarResize.pointerId) return
+      setSidebarResize(null)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', stopResize)
+    window.addEventListener('pointercancel', stopResize)
+    return () => {
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', stopResize)
+      window.removeEventListener('pointercancel', stopResize)
+    }
+  }, [sidebarResize])
 
   useEffect(() => {
     const closeMenu = () => {
@@ -558,6 +611,22 @@ export default function ExplorerSidebar() {
 
   const handleToggle = useCallback((id: string) => {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }))
+  }, [])
+
+  const handleSidebarResizeStart = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setSidebarResize({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    })
+  }, [sidebarWidth])
+
+  const resetSidebarWidth = useCallback(() => {
+    setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)
+    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(SIDEBAR_DEFAULT_WIDTH))
   }, [])
 
   const handleActivateSaved = useCallback(async (id: string) => {
@@ -596,6 +665,58 @@ export default function ExplorerSidebar() {
       saved,
     })
   }, [])
+
+  const clearSavedDragState = useCallback(() => {
+    setDraggedSavedId(null)
+    setDragOverSaved(null)
+  }, [])
+
+  const handleSavedDragStart = useCallback((event: React.DragEvent<HTMLDivElement>, id: string) => {
+    setDraggedSavedId(id)
+    setDragOverSaved(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', id)
+  }, [])
+
+  const handleSavedDragOver = useCallback((event: React.DragEvent<HTMLDivElement>, id: string) => {
+    const sourceId = draggedSavedId || event.dataTransfer.getData('text/plain')
+    if (!sourceId || sourceId === id) return
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    const position = event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+    setDragOverSaved(current => (
+      current?.id === id && current.position === position
+        ? current
+        : { id, position }
+    ))
+  }, [draggedSavedId])
+
+  const handleSavedDrop = useCallback((event: React.DragEvent<HTMLDivElement>, targetId: string) => {
+    event.preventDefault()
+
+    const sourceId = draggedSavedId || event.dataTransfer.getData('text/plain')
+    if (!sourceId || sourceId === targetId) {
+      clearSavedDragState()
+      return
+    }
+
+    const orderedIds = savedConnections.map(saved => saved.id)
+    const withoutSource = orderedIds.filter(id => id !== sourceId)
+    const targetIndex = withoutSource.indexOf(targetId)
+    if (targetIndex < 0) {
+      clearSavedDragState()
+      return
+    }
+
+    const insertIndex = dragOverSaved?.position === 'after' ? targetIndex + 1 : targetIndex
+    const nextIds = [...withoutSource]
+    nextIds.splice(insertIndex, 0, sourceId)
+    reorderSavedConnections(nextIds)
+    clearSavedDragState()
+  }, [clearSavedDragState, draggedSavedId, dragOverSaved?.position, reorderSavedConnections, savedConnections])
 
   const handleDatabaseContextMenu = useCallback((event: React.MouseEvent, payload: { connection: Connection; databaseName?: string; schemaName?: string }) => {
     event.preventDefault()
@@ -731,8 +852,10 @@ export default function ExplorerSidebar() {
   return (
     <aside
       style={{
-        width: 248,
-        minWidth: 220,
+        position: 'relative',
+        width: sidebarWidth,
+        minWidth: SIDEBAR_MIN_WIDTH,
+        maxWidth: SIDEBAR_MAX_WIDTH,
         flexShrink: 0,
         background: 'var(--side-bg)',
         borderRight: '1px solid var(--side-border)',
@@ -740,8 +863,45 @@ export default function ExplorerSidebar() {
         flexDirection: 'column',
         overflow: 'hidden',
         padding: '24px 16px',
+        transition: sidebarResize ? 'none' : 'width 0.12s ease',
       }}
     >
+      <button
+        type="button"
+        aria-label="Resize sidebar"
+        title="Drag to resize sidebar. Double-click to reset."
+        onPointerDown={handleSidebarResizeStart}
+        onDoubleClick={resetSidebarWidth}
+        onMouseEnter={() => setResizeHandleHovered(true)}
+        onMouseLeave={() => setResizeHandleHovered(false)}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: -5,
+          zIndex: 20,
+          width: 10,
+          height: '100%',
+          padding: 0,
+          border: 0,
+          background: 'transparent',
+          cursor: 'col-resize',
+        }}
+      >
+        <span
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 4,
+            width: 2,
+            borderRadius: 999,
+            background: sidebarResize || resizeHandleHovered ? 'var(--accent)' : 'transparent',
+            boxShadow: sidebarResize || resizeHandleHovered ? '0 0 0 2px var(--accent-soft)' : 'none',
+            transition: 'background 0.12s ease, box-shadow 0.12s ease',
+          }}
+        />
+      </button>
+
       {/* brand */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '0 4px 24px' }}>
         <div
@@ -892,24 +1052,60 @@ export default function ExplorerSidebar() {
           <>
             {savedConnections.map(saved => {
               const activeSavedConnection = activeSavedConnectionId === saved.id ? activeConnection : null
-              return activeSavedConnection ? (
-                <ConnectionItem
+              const isDragging = draggedSavedId === saved.id
+              const dropPosition = dragOverSaved?.id === saved.id ? dragOverSaved.position : null
+
+              return (
+                <div
                   key={saved.id}
-                  connection={activeSavedConnection}
-                  expanded={!!expanded[activeSavedConnection.id]}
-                  onToggle={handleToggle}
-                  onConnectionContextMenu={handleConnectionContextMenu}
-                  onDatabaseContextMenu={handleDatabaseContextMenu}
-                  onTableContextMenu={handleTableContextMenu}
-                />
-              ) : (
-                <SavedConnectionItem
-                  key={saved.id}
-                  saved={saved}
-                  activating={activatingSavedId === saved.id}
-                  onActivate={handleActivateSaved}
-                  onContextMenu={handleSavedConnectionContextMenu}
-                />
+                  draggable
+                  onDragStart={event => handleSavedDragStart(event, saved.id)}
+                  onDragOver={event => handleSavedDragOver(event, saved.id)}
+                  onDrop={event => handleSavedDrop(event, saved.id)}
+                  onDragEnd={clearSavedDragState}
+                  style={{
+                    position: 'relative',
+                    opacity: isDragging ? 0.45 : 1,
+                    transform: isDragging ? 'scale(0.985)' : 'scale(1)',
+                    transition: 'opacity 0.12s ease, transform 0.12s ease',
+                    cursor: 'grab',
+                  }}
+                >
+                  {dropPosition && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 8,
+                        right: 8,
+                        top: dropPosition === 'before' ? -2 : undefined,
+                        bottom: dropPosition === 'after' ? -2 : undefined,
+                        height: 2,
+                        borderRadius: 999,
+                        background: 'var(--accent)',
+                        boxShadow: '0 0 0 2px var(--accent-soft)',
+                        pointerEvents: 'none',
+                        zIndex: 2,
+                      }}
+                    />
+                  )}
+                  {activeSavedConnection ? (
+                    <ConnectionItem
+                      connection={activeSavedConnection}
+                      expanded={!!expanded[activeSavedConnection.id]}
+                      onToggle={handleToggle}
+                      onConnectionContextMenu={handleConnectionContextMenu}
+                      onDatabaseContextMenu={handleDatabaseContextMenu}
+                      onTableContextMenu={handleTableContextMenu}
+                    />
+                  ) : (
+                    <SavedConnectionItem
+                      saved={saved}
+                      activating={activatingSavedId === saved.id}
+                      onActivate={handleActivateSaved}
+                      onContextMenu={handleSavedConnectionContextMenu}
+                    />
+                  )}
+                </div>
               )
             })}
             {savedConnections.length === 0 && connections.map(connection => (

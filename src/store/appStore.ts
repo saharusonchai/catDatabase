@@ -78,6 +78,7 @@ interface AppActions {
   openConnectModal:    () => void
   closeConnectModal:   () => void
   deleteSavedConnection: (id: string) => void
+  reorderSavedConnections: (orderedIds: string[]) => void
   openTab:         (tabDef: Tab) => void
   closeTab:        (tabId: string) => void
   closeAllTabs:    () => void
@@ -328,6 +329,21 @@ const useAppStore = create<AppStore>((set, get) => ({
 
   deleteSavedConnection: (id) => {
     const next = get().savedConnections.filter(s => s.id !== id)
+    void api.setSavedConnections(get().authToken, next)
+    set({ savedConnections: next, hasLoadedSavedConnections: true })
+  },
+
+  reorderSavedConnections: (orderedIds) => {
+    const savedConnections = get().savedConnections
+    const byId = new Map(savedConnections.map(saved => [saved.id, saved]))
+    const ordered = orderedIds
+      .map(id => byId.get(id))
+      .filter((saved): saved is SavedConnection => Boolean(saved))
+    const remaining = savedConnections.filter(saved => !orderedIds.includes(saved.id))
+    const next = [...ordered, ...remaining]
+
+    if (next.length !== savedConnections.length) return
+
     void api.setSavedConnections(get().authToken, next)
     set({ savedConnections: next, hasLoadedSavedConnections: true })
   },
