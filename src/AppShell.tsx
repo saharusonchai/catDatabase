@@ -552,7 +552,7 @@ function Overview() {
           id: connection.id,
           label: connection.name,
           config: connection.config ?? {
-            dbType: connection.dbType ?? 'sqlite',
+            dbType: connection.dbType ?? 'postgresql',
             host: connection.filePath,
           },
           lastUsed: Date.now(),

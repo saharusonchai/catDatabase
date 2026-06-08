@@ -105,7 +105,7 @@ const DEFAULT_OPTIONS: Record<'sqlite' | 'mysql' | 'postgresql' | 'mongodb', Def
 let draftCounter = 0
 
 function createColumnDraft(connection: Connection, overrides: Partial<ColumnDraft> = {}): ColumnDraft {
-  const dbType = connection.dbType ?? 'sqlite'
+  const dbType = connection.dbType ?? 'postgresql'
   const firstType = TYPE_OPTIONS[dbType][0]
   draftCounter += 1
 
@@ -128,7 +128,7 @@ function quoteIdentifier(connection: Connection, value: string) {
 }
 
 function buildColumnDefinition(connection: Connection, column: ColumnDraft) {
-  const dbType = connection.dbType ?? 'sqlite'
+  const dbType = connection.dbType ?? 'postgresql'
   const identifier = quoteIdentifier(connection, column.name.trim())
   const type = `${column.type.trim()}${column.length.trim() ? `(${column.length.trim()})` : ''}`
   const defaultOption = DEFAULT_OPTIONS[dbType].find(option => option.value === column.defaultValue)
@@ -162,7 +162,7 @@ function parseTypeSpec(connection: Connection, value: string | null | undefined)
   const match = raw.match(/^(.+?)(?:\((.+)\))?$/)
   const base = match?.[1]?.trim() || ''
   const length = match?.[2]?.trim() || ''
-  const options = TYPE_OPTIONS[connection.dbType ?? 'sqlite']
+  const options = TYPE_OPTIONS[connection.dbType ?? 'postgresql']
   const matched = options.find(option => option.value.toLowerCase() === base.toLowerCase())
   return {
     type: matched?.value ?? (base || options[0].value),
@@ -182,7 +182,7 @@ interface Props {
 function mapDefaultValue(connection: Connection, value: string | null | undefined) {
   if (value == null) return 'none'
   const normalized = String(value).trim().toLowerCase()
-  const options = DEFAULT_OPTIONS[connection.dbType ?? 'sqlite']
+  const options = DEFAULT_OPTIONS[connection.dbType ?? 'postgresql']
   const matched = options.find(option => option.sql?.toLowerCase() === normalized)
   return matched?.value ?? 'none'
 }
@@ -209,11 +209,11 @@ export default function CreateTableView({ connectionId, connectionName, database
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
   const resizeRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null)
 
-  const dbType = connection?.dbType ?? 'sqlite'
+  const dbType = connection?.dbType ?? 'postgresql'
   const typeOptions = TYPE_OPTIONS[dbType]
   const defaultOptions = DEFAULT_OPTIONS[dbType]
   const activeTab = tabs.find(tab => tab.id === activeTabId) ?? null
-  const canEditSchema = mode === 'edit' ? dbType === 'sqlite' || dbType === 'postgresql' : true
+  const canEditSchema = mode === 'edit' ? dbType === 'postgresql' : true
 
   const previewSql = useMemo(() => {
     if (!connection) return ''
@@ -568,7 +568,7 @@ export default function CreateTableView({ connectionId, connectionName, database
               fontWeight: 500,
             }}
           >
-            Existing values are loaded into the form. Saving schema edits is currently supported only for SQLite and PostgreSQL.
+            Existing values are loaded into the form. Saving schema edits is currently supported for PostgreSQL.
           </div>
         )}
 

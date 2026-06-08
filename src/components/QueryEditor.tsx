@@ -96,10 +96,10 @@ interface Props {
 }
 
 const PRESETS = [
-  { label: 'List Tables',  sql: "SELECT name, type FROM sqlite_master WHERE type IN ('table','view') ORDER BY name;" },
-  { label: 'Table Info',   sql: "PRAGMA table_info('cats');" },
-  { label: 'Row Count',    sql: "SELECT COUNT(*) as count FROM cats;" },
-  { label: 'Schema',       sql: "SELECT sql FROM sqlite_master WHERE type='table' ORDER BY name;" },
+  { label: 'List Tables',  sql: "SELECT table_schema, table_name, table_type FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema') ORDER BY table_schema, table_name;" },
+  { label: 'Table Info',   sql: "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'your_table' ORDER BY ordinal_position;" },
+  { label: 'Row Count',    sql: "SELECT COUNT(*) as count FROM public.your_table;" },
+  { label: 'Schema',       sql: "SELECT schemaname, tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema') ORDER BY schemaname, tablename;" },
 ]
 
 const SQL_KEYWORDS = [

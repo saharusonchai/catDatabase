@@ -9,8 +9,7 @@ const isDev = !app.isPackaged
 const appIconPath = path.join(__dirname, '..', 'build', 'icons', 'icon.png')
 
 // ── Lazy-load drivers (avoid crash if native module missing) ──────────────────
-let Database, mysql, pgLib, mongoLib, ssh2Lib
-try { Database = require('better-sqlite3') } catch (_) {}
+let mysql, pgLib, mongoLib, ssh2Lib
 try { mysql   = require('mysql2/promise')   } catch (_) {}
 try { pgLib   = require('pg')               } catch (_) {}
 try { mongoLib = require('mongodb')         } catch (_) {}
@@ -817,143 +816,6 @@ function createSSHTunnel(sshCfg, targetHost, targetPort, options = {}) {
 }
 
 // ── SQLite Adapter ────────────────────────────────────────────────────────────
-class SQLiteAdapter {
-  constructor(db) { this.db = db }
-
-  listTables() {
-    return this.db.prepare(`
-      SELECT name, type FROM sqlite_master
-      WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%'
-      ORDER BY type, name
-    `).all()
-  }
-
-  getTableData(table, page, limit, _dbName, filter, sortColumn, sortDirection) {
-    const lim = Math.min(limit || 100, 1000)
-    const off = (page || 0) * lim
-    const clause = normalizeTableFilterClause(filter)
-    const where = clause ? ` WHERE ${clause}` : ''
-    const order = sortColumn ? ` ORDER BY ${quoteSqliteIdentifier(sortColumn)} ${normalizeSortDirection(sortDirection)}` : ''
-    const rows = this.db.prepare(`SELECT rowid as __rowid__, * FROM "${table}"${where}${order} LIMIT ? OFFSET ?`).all(lim, off)
-    const { cnt } = this.db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"${where}`).get()
-    return { rows, total: cnt, page: page || 0, limit: lim }
-  }
-
-  getTableStructure(table) {
-    const columns    = this.db.prepare(`PRAGMA table_info("${table}")`).all().map(column => ({ ...column, comment: null }))
-    const foreignKeys = this.db.prepare(`PRAGMA foreign_key_list("${table}")`).all()
-    const indices    = this.db.prepare(`PRAGMA index_list("${table}")`).all()
-    const { sql }    = this.db.prepare(`SELECT sql FROM sqlite_master WHERE name = ?`).get(table) || {}
-    return { columns, foreignKeys, indices, sql: sql || '' }
-  }
-
-  runQuery(sql) {
-    const start = Date.now()
-    const isSelect = /^(SELECT|PRAGMA|EXPLAIN|WITH)\b/i.test(sql.trim())
-    try {
-      if (isSelect) {
-        const rows = this.db.prepare(sql).all()
-        return { rows, elapsed: Date.now() - start, type: 'select' }
-      }
-      this.db.exec(sql)
-      return { changes: 0, elapsed: Date.now() - start, type: 'exec' }
-    } catch (e) { return { error: e.message } }
-  }
-
-  insertRow(table, data) {
-    try {
-      const keys = Object.keys(data)
-      const cols = keys.map(k => `"${k}"`).join(', ')
-      const ph   = keys.map(() => '?').join(', ')
-      const vals = keys.map(k => data[k] === '' ? null : data[k])
-      const r = this.db.prepare(`INSERT INTO "${table}" (${cols}) VALUES (${ph})`).run(...vals)
-      return { success: true, lastInsertRowid: r.lastInsertRowid }
-    } catch (e) { return { error: e.message } }
-  }
-
-  updateRow(table, rowid, data) {
-    try {
-      const keys = Object.keys(data).filter(k => k !== '__rowid__')
-      if (!keys.length) return { success: true }
-      const sets = keys.map(k => `"${k}" = ?`).join(', ')
-      const vals = [...keys.map(k => data[k] === '' ? null : data[k]), rowid]
-      this.db.prepare(`UPDATE "${table}" SET ${sets} WHERE rowid = ?`).run(...vals)
-      return { success: true }
-    } catch (e) { return { error: e.message } }
-  }
-
-  deleteRow(table, rowid) {
-    try {
-      this.db.prepare(`DELETE FROM "${table}" WHERE rowid = ?`).run(rowid)
-      return { success: true }
-    } catch (e) { return { error: e.message } }
-  }
-
-  createTable(table, columnsSql) {
-    try {
-      const tableName = assertSimpleIdentifier(table, 'Table name')
-      const definition = String(columnsSql || '').trim()
-      if (!definition) return { error: 'Column definition is required' }
-      this.db.exec(`CREATE TABLE "${tableName}" (${definition})`)
-      return { success: true }
-    } catch (e) { return { error: e.message } }
-  }
-
-  updateTableSchema(table, nextTable, columnsSql) {
-    try {
-      const currentTable = assertSimpleIdentifier(table, 'Table name')
-      const targetTable = assertSimpleIdentifier(nextTable, 'Table name')
-      const definition = String(columnsSql || '').trim()
-      if (!definition) return { error: 'Column definition is required' }
-
-      const existingColumns = this.db.prepare(`PRAGMA table_info(${quoteSqliteIdentifier(currentTable)})`).all()
-      if (!existingColumns.length) return { error: 'Table not found' }
-
-      const existingNames = new Set(existingColumns.map(column => column.name))
-      const tempTable = `__tmp_edit_${Date.now()}`
-      const quotedCurrent = quoteSqliteIdentifier(currentTable)
-      const quotedTarget = quoteSqliteIdentifier(targetTable)
-      const quotedTemp = quoteSqliteIdentifier(tempTable)
-      const quotedBackup = quoteSqliteIdentifier(`__old_${Date.now()}`)
-
-      this.db.exec('BEGIN')
-      try {
-        this.db.exec('PRAGMA foreign_keys = OFF')
-        this.db.exec(`CREATE TABLE ${quotedTemp} (${definition})`)
-        const nextColumns = this.db.prepare(`PRAGMA table_info(${quotedTemp})`).all().map(column => column.name)
-        if (!nextColumns.length) throw new Error('Unable to determine target columns')
-        const sharedColumns = nextColumns.filter(name => existingNames.has(name))
-        if (sharedColumns.length > 0) {
-          const projection = sharedColumns.map(quoteSqliteIdentifier).join(', ')
-          this.db.exec(`INSERT INTO ${quotedTemp} (${projection}) SELECT ${projection} FROM ${quotedCurrent}`)
-        }
-        this.db.exec(`ALTER TABLE ${quotedCurrent} RENAME TO ${quotedBackup}`)
-        this.db.exec(`ALTER TABLE ${quotedTemp} RENAME TO ${quotedTarget}`)
-        this.db.exec(`DROP TABLE ${quotedBackup}`)
-        this.db.exec('PRAGMA foreign_keys = ON')
-        this.db.exec('COMMIT')
-      } catch (error) {
-        this.db.exec('ROLLBACK')
-        this.db.exec('PRAGMA foreign_keys = ON')
-        throw error
-      }
-
-        return { success: true }
-      } catch (e) { return { error: e.message } }
-    }
-
-  deleteTable(table, _dbName, _schemaName, itemType = 'table') {
-    try {
-      const tableName = assertSimpleIdentifier(table, 'Table name')
-      const kind = itemType === 'view' ? 'VIEW' : 'TABLE'
-      this.db.exec(`DROP ${kind} ${quoteSqliteIdentifier(tableName)}`)
-      return { success: true }
-    } catch (e) { return { error: e.message } }
-  }
-
-  close() { try { this.db.close() } catch (_) {} }
-}
-
 // ── MySQL Adapter ─────────────────────────────────────────────────────────────
 class MySQLAdapter {
   constructor(conn, database) { this.conn = conn; this.database = database; this._pk = {} }
@@ -1640,52 +1502,7 @@ async function buildAdapter(cfg) {
 }
 
 // ── Demo SQLite database ──────────────────────────────────────────────────────
-function createDemoDatabase() {
-  if (!Database) return null
-  const demoPath = path.join(app.getPath('userData'), 'cats_demo.db')
-  const db = new Database(demoPath)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS cats (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
-      breed TEXT, age INTEGER, color TEXT, weight_kg REAL,
-      indoor INTEGER DEFAULT 1, notes TEXT
-    );
-    CREATE TABLE IF NOT EXISTS breeds (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
-      origin TEXT, temperament TEXT, lifespan TEXT
-    );
-    CREATE TABLE IF NOT EXISTS health_records (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, cat_id INTEGER NOT NULL,
-      date TEXT, type TEXT, description TEXT, vet TEXT,
-      FOREIGN KEY (cat_id) REFERENCES cats(id)
-    );
-  `)
-  if (db.prepare('SELECT COUNT(*) as c FROM cats').get().c === 0) {
-    const ins = db.prepare(`INSERT INTO cats (name,breed,age,color,weight_kg,indoor,notes) VALUES (?,?,?,?,?,?,?)`)
-    ;[
-      ['Whiskers','Persian',3,'White',4.2,1,'Loves sleeping on the couch'],
-      ['Luna','Siamese',2,'Cream',3.1,1,'Very vocal and playful'],
-      ['Shadow','British Shorthair',5,'Gray',5.0,1,'Calm and independent'],
-      ['Mochi','Scottish Fold',1,'Orange Tabby',2.8,1,'Curious folded ears'],
-      ['Bella','Maine Coon',4,'Brown Tabby',6.5,0,'Loves outdoor adventures'],
-      ['Tiger','Bengal',3,'Spotted Brown',4.8,0,'High energy breed'],
-      ['Nala','Abyssinian',2,'Ruddy',3.4,1,'Athletic and intelligent'],
-      ['Cleo','Egyptian Mau',6,'Silver Spotted',3.9,1,'Ancient breed, fast runner'],
-    ].forEach(r => ins.run(...r))
-  }
-  if (db.prepare('SELECT COUNT(*) as c FROM breeds').get().c === 0) {
-    const ins = db.prepare(`INSERT INTO breeds (name,origin,temperament,lifespan) VALUES (?,?,?,?)`)
-    ;[
-      ['Persian','Iran','Calm, Gentle, Affectionate','12-17 years'],
-      ['Siamese','Thailand','Vocal, Active, Social','15-20 years'],
-      ['British Shorthair','UK','Calm, Reserved, Patient','12-20 years'],
-      ['Scottish Fold','Scotland','Curious, Adaptable, Sweet','11-15 years'],
-      ['Maine Coon','USA','Friendly, Playful, Gentle','12-15 years'],
-      ['Bengal','USA','Active, Energetic, Curious','10-16 years'],
-    ].forEach(r => ins.run(...r))
-  }
-  return { db, filePath: demoPath, name: 'cats_demo.db' }
-}
+const POSTGRES_ONLY_MESSAGE = 'SQLite file databases are disabled in this build. Use a PostgreSQL connection instead.'
 
 // ── Window ────────────────────────────────────────────────────────────────────
 function createWindow() {
@@ -1746,35 +1563,12 @@ ipcMain.handle('window:is-maximized', (event) => {
 })
 
 // ── IPC — file-based SQLite ───────────────────────────────────────────────────
-function openSQLiteFile(filePath) {
-  if (!Database) return { error: 'better-sqlite3 not available. Run: npm run rebuild' }
-  try {
-    const db = new Database(filePath)
-    const id = `conn_${Date.now()}`
-    const name = path.basename(filePath)
-    connections.set(id, { adapter: new SQLiteAdapter(db), name, dbType: 'sqlite', filePath })
-    return { id, name, filePath }
-  } catch (e) { return { error: e.message } }
-}
-
 ipcMain.handle('db:open-file', async () => {
-  const r = await dialog.showOpenDialog({
-    title: 'Open SQLite Database',
-    filters: [{ name: 'SQLite', extensions: ['db','sqlite','sqlite3','s3db','sl3'] }, { name: 'All', extensions: ['*'] }],
-    properties: ['openFile'],
-  })
-  if (r.canceled || !r.filePaths.length) return null
-  return openSQLiteFile(r.filePaths[0])
+  return { error: POSTGRES_ONLY_MESSAGE }
 })
 
 ipcMain.handle('db:create-file', async () => {
-  const r = await dialog.showSaveDialog({
-    title: 'Create New SQLite Database',
-    filters: [{ name: 'SQLite', extensions: ['db'] }],
-    defaultPath: 'new_database.db',
-  })
-  if (r.canceled || !r.filePath) return null
-  return openSQLiteFile(r.filePath)
+  return { error: POSTGRES_ONLY_MESSAGE }
 })
 
 ipcMain.handle('app:select-ssh-private-key', async () => {
@@ -1791,17 +1585,7 @@ ipcMain.handle('app:select-ssh-private-key', async () => {
 })
 
 ipcMain.handle('db:get-demo', () => {
-  if (!Database) return { error: 'better-sqlite3 not available. Run: npm run rebuild' }
-  for (const [id, conn] of connections) {
-    if (conn.name === 'cats_demo.db') return { id, name: conn.name, filePath: conn.filePath }
-  }
-  try {
-    const demo = createDemoDatabase()
-    if (!demo) return { error: 'Failed to create demo DB' }
-    const id = 'demo'
-    connections.set(id, { adapter: new SQLiteAdapter(demo.db), name: demo.name, dbType: 'sqlite', filePath: demo.filePath })
-    return { id, name: demo.name, filePath: demo.filePath }
-  } catch (e) { return { error: e.message } }
+  return { error: POSTGRES_ONLY_MESSAGE }
 })
 
 // ── IPC — remote connection ───────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import type { ColumnInfo, DbRow, StatusInfo } from '../types'
 import useAppStore from '../store/appStore'
 import { MdRefresh } from "react-icons/md";
 import { LuFilter } from "react-icons/lu";
-import { FiPlus, FiTrash2, FiX, FiSave, FiCalendar } from "react-icons/fi";
+import { FiPlus, FiTrash2, FiX, FiSave, FiCalendar, FiEdit2 } from "react-icons/fi";
 import { MdDragIndicator } from "react-icons/md";
 
 const api = window.electronAPI
@@ -157,6 +157,14 @@ function formatTemporalDisplayValue(value: DbRow[string], kind: TemporalInputKin
   }
 
   return raw
+}
+
+function getDefaultColumnWidth(col: string, info?: ColumnInfo): number {
+  if (info?.pk === 1) return 80
+  const type = (info?.type ?? '').toLowerCase()
+  if (/^(int|bigint|smallint|tinyint|serial|integer)/.test(type)) return 80
+  if (col.toLowerCase() === 'id') return 80
+  return 180
 }
 
 function TemporalEditor({
@@ -356,6 +364,8 @@ function buildFilterSql(clauses: FilterClause[]) {
 
 type ModalState =
   | { type: 'delete' }
+  | { type: 'bulk-edit'; column: string }
+  | { type: 'bulk-edit-confirm'; column: string; value: string }
   | null
 
 type RowId = number | string
@@ -376,6 +386,186 @@ function compareDbValues(left: DbRow[string], right: DbRow[string], direction: '
     sensitivity: 'base',
   })
   return direction === 'asc' ? result : -result
+}
+
+// Context Menu
+function ContextMenu({ x, y, selectedCount, column, onDelete, onEdit, onClose }: {
+  x: number
+  y: number
+  selectedCount: number
+  column?: string
+  onDelete: () => void
+  onEdit: (column: string) => void
+  onClose: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [onClose])
+
+  const menuItemStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    padding: '7px 12px',
+    border: 0,
+    background: 'transparent',
+    fontSize: 13,
+    cursor: 'pointer',
+    borderRadius: 6,
+    fontFamily: 'var(--font)',
+  }
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'fixed',
+        left: x,
+        top: y,
+        zIndex: 9999,
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 8,
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+        padding: 4,
+        minWidth: 220,
+      }}
+    >
+      {selectedCount === 0 && (
+        <div style={{ padding: '7px 12px', color: 'var(--tx-3)', fontSize: 12 }}>
+          No rows selected
+        </div>
+      )}
+      {selectedCount > 0 && column && (
+        <button
+          onClick={() => onEdit(column)}
+          style={{ ...menuItemStyle, color: 'var(--tx-1)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+        >
+          <FiEdit2 size={13} style={{ color: 'var(--accent)' }} />
+          Edit "{column}" ({selectedCount} {selectedCount === 1 ? 'row' : 'rows'})
+        </button>
+      )}
+      {selectedCount > 0 && column && (
+        <div style={{ height: 1, background: 'var(--border-faint)', margin: '3px 4px' }} />
+      )}
+      {selectedCount > 0 && (
+        <button
+          onClick={onDelete}
+          style={{ ...menuItemStyle, color: 'var(--red)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-soft)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+        >
+          <FiTrash2 size={13} />
+          Delete {selectedCount} selected {selectedCount === 1 ? 'row' : 'rows'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// Bulk Edit Input Modal
+function BulkEditInputModal({ column, count, onNext, onClose }: {
+  column: string
+  count: number
+  onNext: (value: string) => void
+  onClose: () => void
+}) {
+  const [value, setValue] = useState('')
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal fade-in" style={{ minWidth: 380 }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 600 }}>
+          Edit column "{column}"
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: '0 0 16px', fontSize: 13 }}>
+          Will update <strong style={{ color: 'var(--tx-1)' }}>{count} {count === 1 ? 'row' : 'rows'}</strong> simultaneously
+        </p>
+        <input
+          autoFocus
+          className="form-input"
+          style={{ width: '100%', marginBottom: 20, boxSizing: 'border-box', height: 36 }}
+          placeholder={`New value for ${column}`}
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); onNext(value) }
+            if (e.key === 'Escape') onClose()
+          }}
+        />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn"
+            style={{ background: 'var(--accent)', color: '#fff', border: 0 }}
+            onClick={() => onNext(value)}
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Bulk Edit Confirm Modal
+function BulkEditConfirmModal({ column, value, count, onConfirm, onBack, onClose }: {
+  column: string
+  value: string
+  count: number
+  onConfirm: () => void
+  onBack: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal fade-in" style={{ minWidth: 380 }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600 }}>
+          Confirm edit
+        </h3>
+        <p style={{ color: 'var(--text-secondary)', margin: '0 0 8px', fontSize: 13 }}>
+          Column <strong style={{ color: 'var(--tx-1)' }}>{column}</strong> of{' '}
+          <strong style={{ color: 'var(--tx-1)' }}>{count} {count === 1 ? 'row' : 'rows'}</strong> will be changed to:
+        </p>
+        <div style={{
+          background: 'var(--inset)',
+          borderRadius: 6,
+          padding: '8px 12px',
+          fontFamily: 'var(--mono)',
+          fontSize: 13,
+          color: 'var(--accent-fg)',
+          marginBottom: 12,
+          wordBreak: 'break-all',
+          minHeight: 36,
+          display: 'flex',
+          alignItems: 'center',
+        }}>
+          {value === '' ? <em style={{ color: 'var(--tx-4)', fontStyle: 'italic' }}>(empty)</em> : value}
+        </div>
+        <p style={{ color: 'var(--text-secondary)', margin: '0 0 20px', fontSize: 12 }}>
+          This action cannot be undone.
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={onBack}>← Back</button>
+          <button
+            className="btn"
+            style={{ background: 'var(--accent)', color: '#fff', border: 0, fontWeight: 600 }}
+            onClick={onConfirm}
+          >
+            Confirm edit
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // Delete Confirm
@@ -403,17 +593,19 @@ const Cell = memo(function Cell({
   style,
   onClick,
   onDoubleClick,
+  onContextMenu,
 }: {
   value: DbRow[string]
   isPk: boolean
   style?: React.CSSProperties
   onClick?: (event: React.MouseEvent<HTMLTableCellElement>) => void
   onDoubleClick?: (event: React.MouseEvent<HTMLTableCellElement>) => void
+  onContextMenu?: (event: React.MouseEvent<HTMLTableCellElement>) => void
 }) {
-  if (value === null || value === undefined) return <td style={style} className="null-cell" onClick={onClick} onDoubleClick={onDoubleClick}>NULL</td>
+  if (value === null || value === undefined) return <td style={style} className="null-cell" onClick={onClick} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}>NULL</td>
   const isNum = typeof value === 'number'
   const displayValue = stringifyDbValue(value)
-  return <td style={style} className={isPk ? 'pk-cell' : isNum ? 'num-cell' : ''} title={displayValue} onClick={onClick} onDoubleClick={onDoubleClick}>{displayValue}</td>
+  return <td style={style} className={isPk ? 'pk-cell' : isNum ? 'num-cell' : ''} title={displayValue} onClick={onClick} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}>{displayValue}</td>
 })
 
 // DataGrid
@@ -449,6 +641,8 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
   const [filterSqlDraft, setFilterSqlDraft] = useState('')
   const [appliedFilter, setAppliedFilter]   = useState('')
   const resizeRef = useRef<{ column: string; startX: number; startWidth: number } | null>(null)
+  const lastClickedIndexRef = useRef<number>(-1)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; column?: string } | null>(null)
 
   const builderSql = useMemo(() => buildFilterSql(filterClauses), [filterClauses])
 
@@ -522,6 +716,18 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
   }, [columns])
 
   useEffect(() => {
+    if (!contextMenu) return
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setContextMenu(null) }
+    const handleScroll = () => setContextMenu(null)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [contextMenu])
+
+  useEffect(() => {
     const onMouseMove = (event: MouseEvent) => {
       const resize = resizeRef.current
       if (!resize) return
@@ -571,14 +777,28 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
   const handleResizeStart = useCallback((col: string, event: React.MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    const currentWidth = columnWidths[col] ?? 180
+    const currentWidth = columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col])
     resizeRef.current = { column: col, startX: event.clientX, startWidth: currentWidth }
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
   }, [columnWidths])
 
-  const handleRowClick = useCallback((rowid: RowId | null | undefined, e: React.MouseEvent) => {
+  const handleRowClick = useCallback((rowid: RowId | null | undefined, index: number, e: React.MouseEvent) => {
     if (rowid == null) return
+    if (e.shiftKey && lastClickedIndexRef.current >= 0) {
+      const start = Math.min(lastClickedIndexRef.current, index)
+      const end = Math.max(lastClickedIndexRef.current, index)
+      setSelectedRowids(prev => {
+        const next = new Set(prev)
+        visibleRows.slice(start, end + 1).forEach(r => {
+          const id = r.__rowid__ as RowId
+          if (id != null) next.add(id)
+        })
+        return next
+      })
+      return
+    }
+    lastClickedIndexRef.current = index
     setSelectedRowids(prev => {
       const next = new Set(prev)
       if (e.ctrlKey || e.metaKey) {
@@ -588,7 +808,18 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
       }
       return next
     })
-  }, [])
+  }, [visibleRows])
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), [])
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, rowid: RowId | null | undefined, index: number, column?: string) => {
+    e.preventDefault()
+    if (rowid != null && !selectedRowids.has(rowid)) {
+      setSelectedRowids(new Set([rowid]))
+      lastClickedIndexRef.current = index
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY, column })
+  }, [selectedRowids])
 
   const startInlineEdit = useCallback((row: DbRow) => {
     const rowid = row.__rowid__ as RowId | null | undefined
@@ -643,6 +874,21 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
     setModal(null)
     void loadData(page)()
   }, [connectionId, tableName, database, selectedRowids, page, loadData, cancelInlineEdit])
+
+  const handleBulkEdit = useCallback(async (column: string, value: string) => {
+    for (const rowid of selectedRowids) {
+      const result = await api.updateRow(connectionId, tableName, rowid, { [column]: value }, database)
+      if (result.error) {
+        alert(`Failed to update row ${rowid}:\n` + result.error)
+        setModal(null)
+        void loadData(page)()
+        return
+      }
+    }
+    setSelectedRowids(new Set())
+    setModal(null)
+    void loadData(page)()
+  }, [connectionId, tableName, database, selectedRowids, page, loadData])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const rangeStart = total === 0 ? 0 : page * limit + 1
@@ -1021,7 +1267,7 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
                 style={{ minHeight: 110, borderRadius: 10, padding: 12 }}
               />
               <div style={{ fontSize: 11.5, color: 'var(--tx-3)' }}>
-                {'ใส่เฉพาะเงื่อนไขหลัง WHERE เช่น status = active AND age >= 2'}
+                {'Enter only the condition after WHERE, e.g. status = \'active\' AND age >= 2'}
               </div>
             </div>
           )}
@@ -1117,13 +1363,12 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
             <table className="data-table">
               <thead>
                 <tr>
-                  <th style={{ width: 36, textAlign: 'center', color: 'var(--text-muted)' }}>#</th>
                   {columns.map(col => (
                     <th
                       key={col}
                       className={sortCol === col ? 'sorted' : ''}
                       onClick={() => handleSort(col)}
-                      style={{ width: columnWidths[col] ?? 180, minWidth: columnWidths[col] ?? 180, maxWidth: columnWidths[col] ?? 180 }}
+                      style={{ width: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]), minWidth: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]), maxWidth: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]) }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', position: 'relative', height: '100%' }}>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1160,17 +1405,17 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
                   const canEditRow = rowid != null
                   const isEditing = editingRowId != null && canEditRow && editingRowId === rowid
                   return (
-                    <tr key={rowid ?? i} className={selectedRowids.has(rowid) ? 'selected' : ''}
-                      onClick={e => handleRowClick(rowid, e)}
+                    <tr key={rowid ?? i} className={rowid != null && selectedRowids.has(rowid) ? 'selected' : ''}
+                      onClick={e => handleRowClick(rowid, i, e)}
+                      onContextMenu={e => handleContextMenu(e, rowid, i)}
                       style={{ cursor: 'default' }}>
-                      <td style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 11 }}>{page * limit + i + 1}</td>
                       {columns.map((col, ci) => {
                         const inputKind = getTemporalInputKind(col, columnInfoByName[col]?.type)
 
                         return isEditing ? (
                           <td
                             key={col}
-                            style={{ width: columnWidths[col] ?? 180, minWidth: columnWidths[col] ?? 180, maxWidth: columnWidths[col] ?? 180, padding: 6 }}
+                            style={{ width: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]), minWidth: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]), maxWidth: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]), padding: 6 }}
                           >
                             <TemporalEditor
                               kind={inputKind}
@@ -1191,13 +1436,17 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
                             isPk={ci === 0}
                             onClick={event => {
                               event.stopPropagation()
-                              startInlineEdit(row)
+                              handleRowClick(rowid, i, event)
                             }}
                             onDoubleClick={event => {
                               event.stopPropagation()
                               startInlineEdit(row)
                             }}
-                            style={{ width: columnWidths[col] ?? 180, minWidth: columnWidths[col] ?? 180, maxWidth: columnWidths[col] ?? 180 }}
+                            onContextMenu={event => {
+                              event.stopPropagation()
+                              handleContextMenu(event, rowid, i, col)
+                            }}
+                            style={{ width: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]), minWidth: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]), maxWidth: columnWidths[col] ?? getDefaultColumnWidth(col, columnInfoByName[col]) }}
                           />
                         )
                       })}
@@ -1218,6 +1467,35 @@ export default function DataGrid({ connectionId, tableName, database, onStatusCh
       {/* Modals */}
       {modal?.type === 'delete' && (
         <DeleteConfirm count={selectedRowids.size} onConfirm={handleDelete} onClose={() => setModal(null)} />
+      )}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          selectedCount={selectedRowids.size}
+          column={contextMenu.column}
+          onDelete={() => { setContextMenu(null); setModal({ type: 'delete' }) }}
+          onEdit={col => { setContextMenu(null); setModal({ type: 'bulk-edit', column: col }) }}
+          onClose={closeContextMenu}
+        />
+      )}
+      {modal?.type === 'bulk-edit' && (
+        <BulkEditInputModal
+          column={modal.column}
+          count={selectedRowids.size}
+          onNext={value => setModal({ type: 'bulk-edit-confirm', column: modal.column, value })}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal?.type === 'bulk-edit-confirm' && (
+        <BulkEditConfirmModal
+          column={modal.column}
+          value={modal.value}
+          count={selectedRowids.size}
+          onConfirm={() => { void handleBulkEdit(modal.column, modal.value) }}
+          onBack={() => setModal({ type: 'bulk-edit', column: modal.column })}
+          onClose={() => setModal(null)}
+        />
       )}
     </div>
   )

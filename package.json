@@ -1,14 +1,13 @@
 {
   "name": "catdatabase",
   "version": "2.0.0",
-  "description": "CatDB - Database Management Tool (Electron + React + SQLite)",
+  "description": "CatDB - Database Management Tool (Electron + React + PostgreSQL)",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "vite build",
     "electron:preview": "vite build && electron .",
-    "dist": "vite build && electron-builder",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "dist": "vite build && electron-builder"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -17,7 +16,6 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.1",
     "@uiw/react-codemirror": "^4.25.9",
-    "better-sqlite3": "^12.9.0",
     "mongodb": "^7.1.1",
     "mysql2": "^3.21.0",
     "pg": "^8.20.0",
@@ -28,8 +26,6 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.3",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.2.0",
@@ -38,7 +34,6 @@
     "cross-env": "^7.0.3",
     "electron": "^28.2.0",
     "electron-builder": "^24.9.1",
-    "electron-rebuild": "^3.2.9",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.9.3",
@@ -48,6 +43,7 @@
   "build": {
     "appId": "com.catdatabase.app",
     "productName": "CatDB",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
@@ -57,14 +53,14 @@
       "build/icons/**/*"
     ],
     "win": {
-      "icon": "build/icons/icon.ico"
+      "icon": "build/icons/icon.ico",
+      "signAndEditExecutable": false
     },
     "mac": {
       "icon": "build/icons/icon.icns",
       "identity": null
     },
     "extraResources": [
-      "node_modules/better-sqlite3/**/*",
       {
         "from": ".env",
         "to": ".env"
