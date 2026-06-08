@@ -708,6 +708,93 @@ async function importConnectionScope(conn, request) {
   }
 }
 
+function splitSqlStatements(sql) {
+  const statements = []
+  let current = ''
+  let inString = false
+  let stringChar = ''
+  let inLineComment = false
+  let inBlockComment = false
+  let i = 0
+
+  while (i < sql.length) {
+    const ch = sql[i]
+    const next = sql[i + 1] || ''
+
+    if (inLineComment) {
+      if (ch === '\n') inLineComment = false
+      current += ch
+    } else if (inBlockComment) {
+      if (ch === '*' && next === '/') { inBlockComment = false; current += '*/'; i += 2; continue }
+      current += ch
+    } else if (inString) {
+      if (ch === '\\') { current += ch + next; i += 2; continue }
+      if (ch === stringChar) inString = false
+      current += ch
+    } else {
+      if (ch === '-' && next === '-') { inLineComment = true; current += ch }
+      else if (ch === '/' && next === '*') { inBlockComment = true; current += ch }
+      else if (ch === "'" || ch === '"' || ch === '`') { inString = true; stringChar = ch; current += ch }
+      else if (ch === ';') {
+        const stmt = current.trim()
+        if (stmt) statements.push(stmt)
+        current = ''
+      } else {
+        current += ch
+      }
+    }
+    i++
+  }
+  const last = current.trim()
+  if (last) statements.push(last)
+  return statements
+}
+
+async function importSqlFile(conn, dbName) {
+  const result = await dialog.showOpenDialog({
+    title: 'Import SQL File',
+    filters: [{ name: 'SQL Files', extensions: ['sql'] }],
+    properties: ['openFile'],
+  })
+
+  if (result.canceled || !result.filePaths.length) return { canceled: true }
+
+  const filePath = result.filePaths[0]
+  const buf = fs.readFileSync(filePath)
+  // Handle UTF-16 LE BOM (0xFF 0xFE) and UTF-8 BOM (0xEF 0xBB 0xBF)
+  let raw
+  if (buf[0] === 0xFF && buf[1] === 0xFE) {
+    raw = buf.slice(2).toString('utf16le')
+  } else if (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) {
+    raw = buf.slice(3).toString('utf8')
+  } else {
+    raw = buf.toString('utf8')
+  }
+  const statements = splitSqlStatements(raw)
+
+  let executed = 0
+  let failed = 0
+  let firstError = null
+
+  for (const stmt of statements) {
+    const r = await conn.adapter.runQuery(stmt, dbName)
+    if (r.error) {
+      failed++
+      firstError = firstError || r.error
+    } else {
+      executed++
+    }
+  }
+
+  return {
+    success: true,
+    filePath,
+    executed,
+    failed,
+    warning: firstError ? `Some statements failed. First error: ${firstError}` : undefined,
+  }
+}
+
 function replacePgQualifiedName(definition, schema, currentTable, targetTable) {
   const quotedCurrent = `${quotePgIdentifier(schema)}.${quotePgIdentifier(currentTable)}`
   const quotedTarget = `${quotePgIdentifier(schema)}.${quotePgIdentifier(targetTable)}`
@@ -1463,6 +1550,7 @@ async function buildAdapter(cfg) {
       const conn = await mysql.createConnection({
           host: cfg.host, port: Number(cfg.port) || 3306,
           user: cfg.username, password: cfg.password, database: cfg.database,
+          charset: 'utf8mb4',
           ssl: cfg.ssl ? {} : undefined,
           connectTimeout: 10000,
           enableKeepAlive: Boolean(cfg.keepAlive),
@@ -1739,6 +1827,12 @@ ipcMain.handle('db:import-scope', async (_, id, request) => {
   const conn = connections.get(id)
   if (!conn) return { error: 'Connection not found' }
   try { return await importConnectionScope(conn, request) } catch (e) { return { error: e.message } }
+})
+
+ipcMain.handle('db:import-sql', async (_, id, dbName) => {
+  const conn = connections.get(id)
+  if (!conn) return { error: 'Connection not found' }
+  try { return await importSqlFile(conn, dbName) } catch (e) { return { error: e.message } }
 })
 
 ipcMain.handle('db:update-row', async (_, id, table, rowid, data, dbName) => {

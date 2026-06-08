@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteTable:     (id, table, db, schema, itemType) => ipcRenderer.invoke('db:delete-table', id, table, db, schema, itemType),
   exportScope:     (id, request)                    => ipcRenderer.invoke('db:export-scope', id, request),
   importScope:     (id, request)                    => ipcRenderer.invoke('db:import-scope', id, request),
+  importSql:       (id, dbName)                     => ipcRenderer.invoke('db:import-sql', id, dbName),
   getSavedConnections: (token)                     => ipcRenderer.invoke('app:get-saved-connections', token),
   setSavedConnections: (token, list)               => ipcRenderer.invoke('app:set-saved-connections', token, list),
   selectSshPrivateKey: ()                          => ipcRenderer.invoke('app:select-ssh-private-key'),

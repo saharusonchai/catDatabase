@@ -284,6 +284,7 @@ export interface ElectronAPI {
   deleteTable:        (id: string, table: string, db?: string, schema?: string, itemType?: 'table' | 'view') => Promise<RowMutationResult>
   exportScope:        (id: string, request: ExportScopeRequest)   => Promise<ExportScopeResult>
   importScope:        (id: string, request: ImportScopeRequest)   => Promise<ImportScopeResult>
+  importSql:          (id: string, database?: string)             => Promise<{ success?: boolean; canceled?: boolean; filePath?: string; executed?: number; failed?: number; warning?: string; error?: string }>
   getSavedConnections: (token: string | null)                     => Promise<SavedConnection[] | { error: string }>
   setSavedConnections: (token: string | null, list: SavedConnection[]) => Promise<PersistResult>
   selectSshPrivateKey: ()                                         => Promise<string | null>

@@ -770,6 +770,23 @@ export default function ExplorerSidebar() {
     setStatus({ message: `Exported${detail}: ${result.filePath}` })
   }, [setStatus])
 
+  const handleImportSql = useCallback(async (connection: Connection, dbName?: string) => {
+    setDatabaseContextMenu(null)
+    setTableContextMenu(null)
+    setExpandedTransferMenu(null)
+    setStatus({ message: 'Preparing SQL import...' })
+    const result = await api.importSql(connection.id, dbName)
+    if (result.canceled) { setStatus({ message: 'Import canceled' }); return }
+    if (result.error) { setStatus({ message: result.error, error: true }); return }
+    await refreshConnectionTables(connection.id, dbName)
+    const detail = ` (${result.executed ?? 0} statements executed`
+    const failures = result.failed ? `, ${result.failed} failed` : ''
+    setStatus({
+      message: `SQL imported${detail}${failures}): ${result.filePath}${result.warning ? ` — ${result.warning}` : ''}`,
+      error: Boolean(result.failed),
+    })
+  }, [refreshConnectionTables, setStatus])
+
   const handleImportScope = useCallback(async (connection: Connection, request: ImportScopeRequest) => {
     setDatabaseContextMenu(null)
     setTableContextMenu(null)
@@ -838,6 +855,10 @@ export default function ExplorerSidebar() {
           </button>
           <button className="ctx-item ctx-item-sub" onClick={() => void handleImportScope(connection, { mode: 'schema-data', scope })}>
             <IconImport size={12} sw={1.6} /><span>Schema + Data</span>
+          </button>
+          <div style={{ height: 1, background: 'var(--border-faint)', margin: '3px 0' }} />
+          <button className="ctx-item ctx-item-sub" onClick={() => void handleImportSql(connection, (scope as { databaseName?: string }).databaseName)}>
+            <IconImport size={12} sw={1.6} /><span>SQL File (.sql)</span>
           </button>
         </div>
       )}
