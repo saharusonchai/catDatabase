@@ -148,7 +148,7 @@ async function readSavedConnectionsForUser(userId) {
       id: row.connection_key,
       label: row.label,
       config: row.config,
-      lastUsed: row.last_used_at ? new Date(row.last_used_at).getTime() : Date.now(),
+      lastUsed: (() => { const d = new Date(row.last_used_at); return row.last_used_at && !isNaN(d.getTime()) ? d.getTime() : Date.now() })(),
     }))
   })
 
@@ -391,7 +391,7 @@ function normalizeIpcValue(value) {
   if (value == null) return value
   if (typeof value === 'bigint') return value.toString()
   if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value
-  if (value instanceof Date) return value.toISOString()
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value.toISOString()
   if (Buffer.isBuffer(value)) return value.toString('utf8')
   if (Array.isArray(value)) return value.map(normalizeIpcValue)
   if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString('utf8')
