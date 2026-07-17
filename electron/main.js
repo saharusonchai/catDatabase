@@ -391,7 +391,7 @@ function normalizeIpcValue(value) {
   if (value == null) return value
   if (typeof value === 'bigint') return value.toString()
   if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value
-  if (value instanceof Date) return value.toISOString()
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString()
   if (Buffer.isBuffer(value)) return value.toString('utf8')
   if (Array.isArray(value)) return value.map(normalizeIpcValue)
   if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString('utf8')
