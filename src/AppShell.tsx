@@ -651,7 +651,7 @@ function Overview() {
                 Last access
               </div>
               <div style={{ marginTop: 4, fontSize: 12, color: 'var(--tx-2)' }}>
-                {new Date(card.lastUsed).toLocaleString()}
+                {(() => { const d = new Date(card.lastUsed); return isNaN(d.getTime()) ? '-' : d.toLocaleString() })()}
               </div>
             </button>
           )

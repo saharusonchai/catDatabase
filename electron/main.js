@@ -148,7 +148,7 @@ async function readSavedConnectionsForUser(userId) {
       id: row.connection_key,
       label: row.label,
       config: row.config,
-      lastUsed: row.last_used_at ? new Date(row.last_used_at).getTime() : Date.now(),
+      lastUsed: (() => { const d = new Date(row.last_used_at); return row.last_used_at && !isNaN(d.getTime()) ? d.getTime() : Date.now() })(),
     }))
   })
 
