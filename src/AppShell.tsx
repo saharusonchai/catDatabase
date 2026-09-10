@@ -715,6 +715,13 @@ function MainContent() {
 
   const activeTab = tabs.find(tab => tab.id === activeTabId) ?? null
 
+  const [mountedTableTabIds, setMountedTableTabIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (activeTab && activeTab.type === 'table' && !mountedTableTabIds.has(activeTab.id)) {
+      setMountedTableTabIds(prev => new Set(prev).add(activeTab.id))
+    }
+  }, [activeTab, mountedTableTabIds])
+
   if (tabs.length === 0) {
     return <Overview />
   }
@@ -763,15 +770,25 @@ function MainContent() {
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--surface)' }}>
       <SubTabBar tabId={activeTab.id} />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
-        {subTab === 'data' ? (
-          <DataGrid
-            key={`${activeTab.connectionId}::${activeTab.database ?? ''}::${activeTab.tableName}`}
-            connectionId={activeTab.connectionId}
-            tableName={activeTab.tableName!}
-            database={activeTab.database}
-            onStatusChange={setStatus}
-          />
-        ) : (
+        {tabs.filter(t => t.type === 'table' && mountedTableTabIds.has(t.id)).map(t => (
+          <div
+            key={t.id}
+            style={{
+              display: t.id === activeTab.id && subTab === 'data' ? 'flex' : 'none',
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
+            <DataGrid
+              connectionId={t.connectionId}
+              tableName={t.tableName!}
+              database={t.database}
+              onStatusChange={t.id === activeTab.id ? setStatus : undefined}
+            />
+          </div>
+        ))}
+        {subTab === 'structure' && (
           <StructureView
             key={`${activeTab.connectionId}::${activeTab.database ?? ''}::${activeTab.tableName}::struct`}
             connectionId={activeTab.connectionId}

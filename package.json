@@ -1,6 +1,6 @@
 {
   "name": "catdatabase",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "CatDB - Database Management Tool (Electron + React + PostgreSQL)",
   "main": "electron/main.js",
   "scripts": {

@@ -961,7 +961,8 @@ class MySQLAdapter {
     const ref = this._tbl(table, dbName)
     const clause = normalizeTableFilterClause(filter)
     const where = clause ? ` WHERE ${clause}` : ''
-    const order = sortColumn ? ` ORDER BY ${quoteMysqlIdentifier(sortColumn)} ${normalizeSortDirection(sortDirection)}` : ''
+    const orderCol = sortColumn || pk
+    const order = orderCol ? ` ORDER BY ${quoteMysqlIdentifier(orderCol)} ${normalizeSortDirection(sortColumn ? sortDirection : 'DESC')}` : ''
     const [rows] = await this.conn.execute(`SELECT * FROM ${ref}${where}${order} LIMIT ? OFFSET ?`, [lim, off])
     const [[{ cnt }]] = await this.conn.execute(`SELECT COUNT(*) as cnt FROM ${ref}${where}`)
     const out = rows.map(r => normalizeIpcRow({ __rowid__: pk ? r[pk] : null, ...r }))
@@ -1182,7 +1183,8 @@ class PostgreSQLAdapter {
     const ref = this._tbl(table)
     const clause = normalizeTableFilterClause(filter)
     const where = clause ? ` WHERE ${clause}` : ''
-    const order = sortColumn ? ` ORDER BY ${quotePgIdentifier(sortColumn)} ${normalizeSortDirection(sortDirection)} NULLS LAST` : ''
+    const orderCol = sortColumn || pk
+    const order = orderCol ? ` ORDER BY ${quotePgIdentifier(orderCol)} ${normalizeSortDirection(sortColumn ? sortDirection : 'DESC')} NULLS LAST` : ''
     return this._withClient(dbName, async client => {
       const { rows } = await client.query(`SELECT * FROM ${ref}${where}${order} LIMIT $1 OFFSET $2`, [lim, off])
       const { rows: [{ cnt }] } = await client.query(`SELECT COUNT(*) as cnt FROM ${ref}${where}`)
@@ -1473,7 +1475,7 @@ class MongoDBAdapter {
     const lim = Math.min(limit || 100, 1000)
     const off = (page || 0) * lim
     const cursor = this.db.collection(table).find({}).skip(off).limit(lim)
-    if (sortColumn) cursor.sort({ [sortColumn]: normalizeSortDirection(sortDirection) === 'DESC' ? -1 : 1 })
+    cursor.sort({ [sortColumn || '_id']: (sortColumn ? normalizeSortDirection(sortDirection) : 'DESC') === 'DESC' ? -1 : 1 })
     const coll = this.db.collection(table)
     const [docs, total] = await Promise.all([
       cursor.toArray(),
